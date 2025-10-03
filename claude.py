@@ -885,50 +885,6 @@ else:
                 if not df_historical_pdf.empty and len(df_historical_pdf) > 1:
                     df_historical_kpi_pdf = calculate_historical_kpis(df_historical_pdf)
                 
-                # Bouton de génération PDF
-                if st.button("🎯 Générer le rapport PDF complet", key="generate_pdf"):
-                    with st.spinner("Génération du rapport PDF en cours..."):
-                        # Essayer d'abord ReportLab
-                        pdf_data = create_pdf_report(
-                            commune_pdf_data, 
-                            df_historical_kpi_pdf, 
-                            dept_selection, 
-                            annee_selection
-                        )
-                        
-                        # Si échec, essayer HTML
-                        if pdf_data is None:
-                            st.info("🔄 Tentative avec méthode alternative...")
-                            pdf_data = create_html_pdf_report(
-                                commune_pdf_data,
-                                df_historical_kpi_pdf,
-                                dept_selection,
-                                annee_selection
-                            )
-                        
-                        if pdf_data:
-                            # Déterminer le type de fichier
-                            if pdf_data.startswith(b'%PDF') or isinstance(pdf_data, bytes):
-                                file_ext = ".pdf"
-                                mime_type = "application/pdf"
-                                success_msg = "✅ Rapport PDF généré avec succès !"
-                            else:
-                                file_ext = ".html"
-                                mime_type = "text/html"
-                                success_msg = "✅ Rapport HTML généré avec succès ! (Convertissez en PDF avec votre navigateur)"
-                            
-                            st.success(success_msg)
-                            st.download_button(
-                                label=f"📥 Télécharger le rapport {'PDF' if file_ext == '.pdf' else 'HTML'}",
-                                data=pdf_data,
-                                file_name=f"rapport_financier_{commune_pdf.replace(' ', '_')}_{annee_selection}{file_ext}",
-                                mime=mime_type,
-                                key="download_pdf"
-                            )
-                        else:
-                            st.error("❌ Impossible de générer le rapport")
-                            st.info("💡 Installez les dépendances : pip install reportlab weasyprint")
-        
         # === SYNTHÈSE ===
         st.markdown("---")
         st.subheader("📋 Synthèse départementale")
