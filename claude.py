@@ -9,6 +9,8 @@ import tempfile
 import os
 import time
 import uuid
+import base64
+from datetime import datetime
 
 # Configuration de la page
 st.set_page_config(
@@ -260,56 +262,50 @@ def create_evolution_charts(df_historical_kpi, commune_name):
     )
     
     return fig_teb, fig_cd, fig_annuite, fig_endett
-def score_alerte(row, df_ref):
-    """Calcule le score de risque financier"""
-    score = 0
+def score_sante_financiere(row, df_ref):
+    """Calcule le score de santé financière (0-100, plus c'est haut mieux c'est)"""
+    score = 100  # On part de 100 et on retire des points
 
     # Capacité de désendettement
     if pd.isna(row['CD (années)']) or row['CD (années)'] <= 0:
-        score += 40
-    elif row['CD (années)'] <= 8:
-        score += 30
-    elif row['CD (années)'] <= 12:
-        score += 15
+        score -= 40  # Très mauvais
+    elif row['CD (années)'] > 12:
+        score -= 30  # Mauvais
+    elif row['CD (années)'] > 8:
+        score -= 15  # Moyen
 
     # Taux d'épargne brute
     if pd.isna(row['TEB (%)']) or row['TEB (%)'] < 0:
-        score += 25
-    elif row['TEB (%)'] >= 8:
-        score += 0
-    elif row['TEB (%)'] >= 5:
-        score += 12.5
-    else:
-        score += 25
+        score -= 25  # Très mauvais
+    elif row['TEB (%)'] < 5:
+        score -= 25  # Critique
+    elif row['TEB (%)'] < 8:
+        score -= 12.5  # Acceptable
 
     # Annuité / RRF
-    if pd.isna(row['Annuité / RRF (%)']):
-        score += 0
-    elif row['Annuité / RRF (%)'] <= 12:
-        score += 0
-    elif row['Annuité / RRF (%)'] <= 18:
-        score += 10
-    else:
-        score += 20
+    if pd.notna(row['Annuité / RRF (%)']):
+        if row['Annuité / RRF (%)'] > 18:
+            score -= 20  # Très élevé
+        elif row['Annuité / RRF (%)'] > 12:
+            score -= 10  # Élevé
 
     # Encours / hab
-    if pd.isna(row['Encours / hab (€/hab)']):
-        score += 0
-    elif row['Encours / hab (€/hab)'] > df_ref['Encours / hab (€/hab)'].quantile(0.8):
-        score += 25
-    elif row['Encours / hab (€/hab)'] > df_ref['Encours / hab (€/hab)'].quantile(0.6):
-        score += 12.5
+    if pd.notna(row['Encours / hab (€/hab)']):
+        if row['Encours / hab (€/hab)'] > df_ref['Encours / hab (€/hab)'].quantile(0.8):
+            score -= 25  # Très élevé
+        elif row['Encours / hab (€/hab)'] > df_ref['Encours / hab (€/hab)'].quantile(0.6):
+            score -= 12.5  # Élevé
 
-    return score
+    return max(0, score)  # Score ne peut pas être négatif
 
 def niveau_alerte(score):
-    """Détermine le niveau d'alerte"""
+    """Détermine le niveau d'alerte (score inversé : haut = bon)"""
     if score >= 70:
-        return "🔴 Rouge"
+        return "🟢 Vert"
     elif score >= 50:
         return "🟠 Orange"
     else:
-        return "🟢 Vert"
+        return "🔴 Rouge"
 
 def get_color_alerte(niveau):
     """Retourne la couleur correspondant au niveau"""
@@ -464,10 +460,10 @@ else:
         df_kpi["CD (années)"] = df_kpi["Encours (K€)"] / df_kpi["Épargne brute (K€)"].replace(0, pd.NA)
         df_kpi["Annuité / RRF (%)"] = df_kpi["Annuité (K€)"] / df_kpi["RRF (K€)"].replace(0, pd.NA) * 100
         df_kpi["Encours / hab (€/hab)"] = df_kpi["Encours (K€)"] * 1000 / df_kpi["Population"].replace(0, pd.NA)
-        df_kpi["Rigidité (%)"] = ((df_kpi["DRF (K€)"] - df_kpi["Annuité (K€)"]) / df_kpi["RRF (K€)"].replace(0, pd.NA) * 100)
+        df_kpi["Rigidité (%)"] = (df_kpi["DRF (K€)"] / df_kpi["RRF (K€)"].replace(0, pd.NA) * 100)
         
         # Calcul des scores
-        df_kpi['Score'] = df_kpi.apply(score_alerte, axis=1, df_ref=df_kpi)
+        df_kpi['Score'] = df_kpi.apply(score_sante_financiere, axis=1, df_ref=df_kpi)
         df_kpi['Niveau d\'alerte'] = df_kpi['Score'].apply(niveau_alerte)
         
         # Création des tranches de population
@@ -488,7 +484,7 @@ else:
         
         with col2:
             score_moyen = df_filtered['Score'].mean()
-            st.metric("📊 Score moyen", f"{score_moyen:.1f}/100")
+            st.metric("📊 Score moyen de santé", f"{score_moyen:.1f}/100")
         
         with col3:
             pop_totale = df_filtered['Population'].sum()
@@ -496,7 +492,7 @@ else:
         
         with col4:
             pct_rouge = (df_filtered['Niveau d\'alerte'].str.contains('Rouge').sum() / len(df_filtered) * 100)
-            st.metric("🚨 % Communes à risque", f"{pct_rouge:.1f}%")
+            st.metric("🚨 % Communes fragiles", f"{pct_rouge:.1f}%")
         
         st.markdown("---")
         
@@ -519,10 +515,10 @@ else:
         with col2:
             # Histogramme des scores
             fig_hist = px.histogram(df_filtered, x='Score', nbins=15,
-                                   title="📈 Distribution des scores de risque",
-                                   labels={'Score': 'Score de risque', 'count': 'Nombre de communes'})
+                                   title="📈 Distribution des scores de santé financière",
+                                   labels={'Score': 'Score de santé', 'count': 'Nombre de communes'})
             fig_hist.add_vline(x=50, line_dash="dash", line_color="orange", annotation_text="Seuil Orange")
-            fig_hist.add_vline(x=70, line_dash="dash", line_color="red", annotation_text="Seuil Rouge")
+            fig_hist.add_vline(x=70, line_dash="dash", line_color="green", annotation_text="Seuil Vert")
             st.plotly_chart(fig_hist, use_container_width=True)
         
         # Ligne 2 : Analyse comparative
@@ -588,13 +584,13 @@ else:
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("#### 🔴 Top 10 - Communes les plus à risque")
-            top_risk = df_filtered.nlargest(10, 'Score')[['Commune', 'Population', 'Score', 'TEB (%)', 'CD (années)']]
+            st.markdown("#### 🔴 Top 10 - Communes les plus fragiles")
+            top_risk = df_filtered.nsmallest(10, 'Score')[['Commune', 'Population', 'Score', 'TEB (%)', 'CD (années)']]
             st.dataframe(top_risk, use_container_width=True)
         
         with col2:
             st.markdown("#### 🟢 Top 10 - Communes les plus solides")
-            top_solid = df_filtered.nsmallest(10, 'Score')[['Commune', 'Population', 'Score', 'TEB (%)', 'CD (années)']]
+            top_solid = df_filtered.nlargest(10, 'Score')[['Commune', 'Population', 'Score', 'TEB (%)', 'CD (années)']]
             st.dataframe(top_solid, use_container_width=True)
         
         # === ANALYSE DÉTAILLÉE D'UNE COMMUNE ===
@@ -611,40 +607,101 @@ else:
             with col1:
                 st.markdown(f"**Commune :** {commune_data['Commune']}")
                 st.markdown(f"**Population :** {commune_data['Population']:,} habitants")
-                st.markdown(f"**Score de risque :** {commune_data['Score']:.1f}/100")
+                st.markdown(f"**Score de santé :** {commune_data['Score']:.1f}/100")
                 st.markdown(f"**Niveau d'alerte :** {commune_data['Niveau d\'alerte']}")
             
             with col2:
-                # Radar chart des indicateurs
-                categories = ['TEB (%)', 'CD inversée', 'Rigidité (%)', 'Endettement/hab']
+                # Radar chart avec comparaison commune vs strate
+                categories = ['TEB', 'CD inversée', 'Rigidité inv.', 'Endettement/hab inv.', 'Annuité inv.']
                 
-                # Normalisation des valeurs pour le radar (0-100)
-                teb_norm = max(0, min(100, commune_data['TEB (%)'] * 10))  # TEB * 10
-                cd_norm = max(0, min(100, 100 - commune_data['CD (années)'] * 5))  # Inversé
-                rigidite_norm = max(0, min(100, 100 - commune_data['Rigidité (%)']))  # Inversé
-                endett_norm = max(0, min(100, 100 - (commune_data['Encours / hab (€/hab)'] / 50)))  # Inversé et normalisé
+                # Normalisation des valeurs COMMUNE (0-100, plus c'est haut mieux c'est)
+                teb_norm = max(0, min(100, commune_data['TEB (%)'] * 10))
+                cd_norm = max(0, min(100, 100 - commune_data['CD (années)'] * 5))
+                rigidite_norm = max(0, min(100, 200 - commune_data['Rigidité (%)']))
+                endett_norm = max(0, min(100, 100 - (commune_data['Encours / hab (€/hab)'] / 50)))
+                annuite_norm = max(0, min(100, 100 - commune_data['Annuité / RRF (%)'] * 5))
+                
+                # Calcul des moyennes STRATE du département pour comparaison
+                teb_strate = df_kpi['TEB (%)'].mean()
+                cd_strate = df_kpi['CD (années)'].mean()
+                rigidite_strate = df_kpi['Rigidité (%)'].mean()
+                endett_strate = df_kpi['Encours / hab (€/hab)'].mean()
+                annuite_strate = df_kpi['Annuité / RRF (%)'].mean()
+                
+                # Normalisation des valeurs STRATE (même logique)
+                teb_strate_norm = max(0, min(100, teb_strate * 10))
+                cd_strate_norm = max(0, min(100, 100 - cd_strate * 5))
+                rigidite_strate_norm = max(0, min(100, 200 - rigidite_strate))
+                endett_strate_norm = max(0, min(100, 100 - (endett_strate / 50)))
+                annuite_strate_norm = max(0, min(100, 100 - annuite_strate * 5))
                 
                 fig_radar = go.Figure()
                 
+                # Trace de la commune
                 fig_radar.add_trace(go.Scatterpolar(
-                    r=[teb_norm, cd_norm, rigidite_norm, endett_norm],
+                    r=[teb_norm, cd_norm, rigidite_norm, endett_norm, annuite_norm],
                     theta=categories,
                     fill='toself',
                     name=commune_data['Commune'],
-                    line_color=get_color_alerte(commune_data['Niveau d\'alerte'])
+                    line=dict(color=get_color_alerte(commune_data['Niveau d\'alerte']), width=3),
+                    marker=dict(size=8)
+                ))
+                
+                # Trace de la moyenne départementale (strate)
+                fig_radar.add_trace(go.Scatterpolar(
+                    r=[teb_strate_norm, cd_strate_norm, rigidite_strate_norm, endett_strate_norm, annuite_strate_norm],
+                    theta=categories,
+                    fill='toself',
+                    name=f'Moyenne Dept. {dept_selection}',
+                    line=dict(color='gray', width=2, dash='dash'),
+                    opacity=0.5
                 ))
                 
                 fig_radar.update_layout(
                     polar=dict(
                         radialaxis=dict(
                             visible=True,
-                            range=[0, 100]
+                            range=[0, 100],
+                            showticklabels=True,
+                            ticks='outside'
                         )),
                     showlegend=True,
-                    title="Profil financier de la commune"
+                    title="Profil financier : Commune vs Moyenne Départementale",
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=-0.2,
+                        xanchor="center",
+                        x=0.5
+                    )
                 )
                 
                 st.plotly_chart(fig_radar, use_container_width=True)
+                
+                # Ajout d'un indicateur de comparaison textuel
+                st.markdown("**🎯 Analyse comparative :**")
+                
+                comparaisons = []
+                if teb_norm > teb_strate_norm + 10:
+                    comparaisons.append("✅ TEB supérieur à la moyenne départementale")
+                elif teb_norm < teb_strate_norm - 10:
+                    comparaisons.append("⚠️ TEB inférieur à la moyenne départementale")
+                
+                if cd_norm > cd_strate_norm + 10:
+                    comparaisons.append("✅ Endettement mieux maîtrisé que la moyenne")
+                elif cd_norm < cd_strate_norm - 10:
+                    comparaisons.append("⚠️ Endettement plus élevé que la moyenne")
+                
+                if rigidite_norm > rigidite_strate_norm + 10:
+                    comparaisons.append("✅ Plus de flexibilité budgétaire que la moyenne")
+                elif rigidite_norm < rigidite_strate_norm - 10:
+                    comparaisons.append("⚠️ Moins de flexibilité que la moyenne")
+                
+                if comparaisons:
+                    for comp in comparaisons:
+                        st.markdown(f"- {comp}")
+                else:
+                    st.markdown("- 📊 Performance globalement dans la moyenne départementale")
             
             # === ANALYSE PLURIANNUELLE ===
             st.markdown("---")
@@ -800,6 +857,77 @@ else:
                 file_name=f"analyse_finances_{dept_selection}_{annee_selection}.csv",
                 mime="text/csv"
             )
+        
+        # === GÉNÉRATION PDF INDIVIDUELLE ===
+        st.markdown("---")
+        st.subheader("📄 Rapport PDF individuel")
+        
+        commune_pdf = st.selectbox(
+            "Sélectionnez une commune pour générer son rapport PDF", 
+            df_filtered['Commune'].sort_values(),
+            key="pdf_commune_selector"
+        )
+        
+        if commune_pdf:
+            commune_pdf_data = df_filtered[df_filtered['Commune'] == commune_pdf].iloc[0]
+            
+            col_pdf1, col_pdf2 = st.columns([1, 2])
+            
+            with col_pdf1:
+                st.markdown(f"**Commune sélectionnée :** {commune_pdf}")
+                st.markdown(f"**Score :** {commune_pdf_data['Score']:.1f}/100")
+                st.markdown(f"**Niveau :** {commune_pdf_data['Niveau d\'alerte']}")
+            
+            with col_pdf2:
+                # Récupération des données historiques pour le PDF
+                df_historical_pdf = fetch_historical_commune_data(commune_pdf, dept_selection)
+                df_historical_kpi_pdf = None
+                if not df_historical_pdf.empty and len(df_historical_pdf) > 1:
+                    df_historical_kpi_pdf = calculate_historical_kpis(df_historical_pdf)
+                
+                # Bouton de génération PDF
+                if st.button("🎯 Générer le rapport PDF complet", key="generate_pdf"):
+                    with st.spinner("Génération du rapport PDF en cours..."):
+                        # Essayer d'abord ReportLab
+                        pdf_data = create_pdf_report(
+                            commune_pdf_data, 
+                            df_historical_kpi_pdf, 
+                            dept_selection, 
+                            annee_selection
+                        )
+                        
+                        # Si échec, essayer HTML
+                        if pdf_data is None:
+                            st.info("🔄 Tentative avec méthode alternative...")
+                            pdf_data = create_html_pdf_report(
+                                commune_pdf_data,
+                                df_historical_kpi_pdf,
+                                dept_selection,
+                                annee_selection
+                            )
+                        
+                        if pdf_data:
+                            # Déterminer le type de fichier
+                            if pdf_data.startswith(b'%PDF') or isinstance(pdf_data, bytes):
+                                file_ext = ".pdf"
+                                mime_type = "application/pdf"
+                                success_msg = "✅ Rapport PDF généré avec succès !"
+                            else:
+                                file_ext = ".html"
+                                mime_type = "text/html"
+                                success_msg = "✅ Rapport HTML généré avec succès ! (Convertissez en PDF avec votre navigateur)"
+                            
+                            st.success(success_msg)
+                            st.download_button(
+                                label=f"📥 Télécharger le rapport {'PDF' if file_ext == '.pdf' else 'HTML'}",
+                                data=pdf_data,
+                                file_name=f"rapport_financier_{commune_pdf.replace(' ', '_')}_{annee_selection}{file_ext}",
+                                mime=mime_type,
+                                key="download_pdf"
+                            )
+                        else:
+                            st.error("❌ Impossible de générer le rapport")
+                            st.info("💡 Installez les dépendances : pip install reportlab weasyprint")
         
         # === SYNTHÈSE ===
         st.markdown("---")
