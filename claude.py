@@ -611,7 +611,7 @@ else:
                 st.markdown(f"**Niveau d'alerte :** {commune_data['Niveau d\'alerte']}")
             
             with col2:
-                # Radar chart avec comparaison commune vs strate
+                # Radar chart avec comparaison commune vs strate officielle
                 categories = ['TEB', 'CD inversée', 'Rigidité inv.', 'Endettement/hab inv.', 'Annuité inv.']
                 
                 # Normalisation des valeurs COMMUNE (0-100, plus c'est haut mieux c'est)
@@ -621,19 +621,27 @@ else:
                 endett_norm = max(0, min(100, 100 - (commune_data['Encours / hab (€/hab)'] / 50)))
                 annuite_norm = max(0, min(100, 100 - commune_data['Annuité / RRF (%)'] * 5))
                 
-                # Calcul des moyennes STRATE du département pour comparaison
-                teb_strate = df_kpi['TEB (%)'].mean()
-                cd_strate = df_kpi['CD (années)'].mean()
-                rigidite_strate = df_kpi['Rigidité (%)'].mean()
-                endett_strate = df_kpi['Encours / hab (€/hab)'].mean()
-                annuite_strate = df_kpi['Annuité / RRF (%)'].mean()
+                # Calcul des KPI de la STRATE OFFICIELLE (données API)
+                epargne_strate = commune_data['Épargne brute - Moy. strate (K€)']
+                rrf_strate = commune_data['RRF - Moy. strate (K€)']
+                drf_strate = commune_data['DRF - Moy. strate (K€)']
+                encours_strate = commune_data['Encours - Moy. strate (K€)']
+                annuite_strate_val = commune_data['Annuité - Moy. strate (K€)']
+                
+                # Calcul des ratios STRATE
+                teb_strate = (epargne_strate / rrf_strate * 100) if pd.notna(rrf_strate) and rrf_strate != 0 else 0
+                cd_strate = (encours_strate / epargne_strate) if pd.notna(epargne_strate) and epargne_strate != 0 else 0
+                rigidite_strate = (drf_strate / rrf_strate * 100) if pd.notna(rrf_strate) and rrf_strate != 0 else 0
+                annuite_rrf_strate = (annuite_strate_val / rrf_strate * 100) if pd.notna(rrf_strate) and rrf_strate != 0 else 0
+                # Pour l'endettement/hab de la strate, on utilise une approximation avec la pop moyenne
+                endett_strate = (encours_strate * 1000 / commune_data['Population']) if pd.notna(commune_data['Population']) and commune_data['Population'] != 0 else 0
                 
                 # Normalisation des valeurs STRATE (même logique)
                 teb_strate_norm = max(0, min(100, teb_strate * 10))
                 cd_strate_norm = max(0, min(100, 100 - cd_strate * 5))
                 rigidite_strate_norm = max(0, min(100, 200 - rigidite_strate))
                 endett_strate_norm = max(0, min(100, 100 - (endett_strate / 50)))
-                annuite_strate_norm = max(0, min(100, 100 - annuite_strate * 5))
+                annuite_strate_norm = max(0, min(100, 100 - annuite_rrf_strate * 5))
                 
                 fig_radar = go.Figure()
                 
@@ -647,13 +655,13 @@ else:
                     marker=dict(size=8)
                 ))
                 
-                # Trace de la moyenne départementale (strate)
+                # Trace de la strate officielle
                 fig_radar.add_trace(go.Scatterpolar(
                     r=[teb_strate_norm, cd_strate_norm, rigidite_strate_norm, endett_strate_norm, annuite_strate_norm],
                     theta=categories,
                     fill='toself',
-                    name=f'Moyenne Dept. {dept_selection}',
-                    line=dict(color='gray', width=2, dash='dash'),
+                    name='Moyenne Strate Officielle',
+                    line=dict(color='#FFA500', width=2, dash='dash'),
                     opacity=0.5
                 ))
                 
@@ -666,7 +674,7 @@ else:
                             ticks='outside'
                         )),
                     showlegend=True,
-                    title="Profil financier : Commune vs Moyenne Départementale",
+                    title="Profil financier : Commune vs Strate Officielle",
                     legend=dict(
                         orientation="h",
                         yanchor="bottom",
@@ -679,29 +687,29 @@ else:
                 st.plotly_chart(fig_radar, use_container_width=True)
                 
                 # Ajout d'un indicateur de comparaison textuel
-                st.markdown("**🎯 Analyse comparative :**")
+                st.markdown("**🎯 Analyse comparative vs strate officielle :**")
                 
                 comparaisons = []
                 if teb_norm > teb_strate_norm + 10:
-                    comparaisons.append("✅ TEB supérieur à la moyenne départementale")
+                    comparaisons.append(f"✅ TEB supérieur à la strate ({commune_data['TEB (%)']:.1f}% vs {teb_strate:.1f}%)")
                 elif teb_norm < teb_strate_norm - 10:
-                    comparaisons.append("⚠️ TEB inférieur à la moyenne départementale")
+                    comparaisons.append(f"⚠️ TEB inférieur à la strate ({commune_data['TEB (%)']:.1f}% vs {teb_strate:.1f}%)")
                 
                 if cd_norm > cd_strate_norm + 10:
-                    comparaisons.append("✅ Endettement mieux maîtrisé que la moyenne")
+                    comparaisons.append(f"✅ Endettement mieux maîtrisé que la strate ({commune_data['CD (années)']:.1f} ans vs {cd_strate:.1f} ans)")
                 elif cd_norm < cd_strate_norm - 10:
-                    comparaisons.append("⚠️ Endettement plus élevé que la moyenne")
+                    comparaisons.append(f"⚠️ Endettement plus élevé que la strate ({commune_data['CD (années)']:.1f} ans vs {cd_strate:.1f} ans)")
                 
                 if rigidite_norm > rigidite_strate_norm + 10:
-                    comparaisons.append("✅ Plus de flexibilité budgétaire que la moyenne")
+                    comparaisons.append(f"✅ Plus de flexibilité budgétaire que la strate ({commune_data['Rigidité (%)']:.1f}% vs {rigidite_strate:.1f}%)")
                 elif rigidite_norm < rigidite_strate_norm - 10:
-                    comparaisons.append("⚠️ Moins de flexibilité que la moyenne")
+                    comparaisons.append(f"⚠️ Moins de flexibilité que la strate ({commune_data['Rigidité (%)']:.1f}% vs {rigidite_strate:.1f}%)")
                 
                 if comparaisons:
                     for comp in comparaisons:
                         st.markdown(f"- {comp}")
                 else:
-                    st.markdown("- 📊 Performance globalement dans la moyenne départementale")
+                    st.markdown("- 📊 Performance globalement dans la moyenne de la strate officielle")
             
             # === ANALYSE PLURIANNUELLE ===
             st.markdown("---")
@@ -884,7 +892,7 @@ else:
                 df_historical_kpi_pdf = None
                 if not df_historical_pdf.empty and len(df_historical_pdf) > 1:
                     df_historical_kpi_pdf = calculate_historical_kpis(df_historical_pdf)
-                
+                    
         # === SYNTHÈSE ===
         st.markdown("---")
         st.subheader("📋 Synthèse départementale")
