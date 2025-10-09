@@ -166,7 +166,7 @@ def fetch_communes(dep, an):
         api_url = get_api_url_for_year(an)  # URL adaptée à l'année
         dfs = []
         limit = 100
-        offset = 1
+        offset = 0
 
         with st.spinner(f"Récupération des données pour {dep}..."):
             while True:
@@ -949,7 +949,7 @@ else:
             # === ANALYSE PLURIANNUELLE ===
             st.markdown("---")
             st.subheader(f"📊 Évolution pluriannuelle : {commune_selectionnee}")
-            st.markdown("*Comparaison avec la moyenne de la strate officielle (2019-2023)*")
+            st.markdown("*Comparaison avec la moyenne de la strate officielle (2019-2024)*")
             
             # Récupération des données historiques
             with st.spinner("Chargement des données historiques..."):
