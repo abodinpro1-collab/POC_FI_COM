@@ -10,6 +10,9 @@ import os
 import time
 import uuid
 import base64
+import re
+from functools import lru_cache
+from difflib import SequenceMatcher
 from datetime import datetime
 
 # Configuration de la page
@@ -19,7 +22,122 @@ st.set_page_config(
     layout="wide"
 )
 
-API_URL = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/comptes-individuels-des-communes-fichier-global-a-compter-de-2000/records"
+# Clear session state au démarrage pour éviter les conflits
+if "initialized" not in st.session_state:
+    st.session_state.clear()
+    st.session_state.initialized = True
+
+# Mapping des années vers les nouveaux datasets
+DATASETS_MAPPING = {
+    2019: "comptes-individuels-des-communes-fichier-global-2019-2020",
+    2020: "comptes-individuels-des-communes-fichier-global-2019-2020",
+    2021: "comptes-individuels-des-communes-fichier-global-2021",
+    2022: "comptes-individuels-des-communes-fichier-global-2022",
+    2023: "comptes-individuels-des-communes-fichier-global-2023-2024",
+    2024: "comptes-individuels-des-communes-fichier-global-2023-2024"
+}
+
+def get_dataset_for_year(annee):
+    """Retourne le dataset approprié pour une année donnée"""
+    return DATASETS_MAPPING.get(annee, "comptes-individuels-des-communes-fichier-global-2023-2024")
+
+def get_api_url_for_year(annee):
+    """Retourne l'URL de l'API pour une année donnée"""
+    dataset = get_dataset_for_year(annee)
+    return f"https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/{dataset}/records"
+
+class RobustCommuneFetcher:
+    """Fetcher robuste pour l'analyse départementale"""
+    
+    def __init__(self):
+        self._cache = {}
+    
+    @lru_cache(maxsize=500)
+    def normalize_commune_name(self, name):
+        """Normalise un nom de commune"""
+        if not name:
+            return ""
+        
+        normalized = name.strip().upper()
+        patterns = [
+            (r'^(LA|LE|LES)\s+(.+)$', r'\2 (\1)'),
+            (r'^(.+)\s+\((LA|LE|LES)\)$', r'\2 \1'),
+        ]
+        
+        for pattern, replacement in patterns:
+            normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
+        
+        return re.sub(r'\s+', ' ', normalized).strip()
+    
+    def find_commune_variants(self, commune, departement=None):
+        """Trouve les variantes d'une commune dans tous les datasets"""
+        cache_key = f"{commune}_{departement}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        
+        variants = []
+        search_terms = self._generate_search_terms(commune)
+        
+        # Rechercher dans tous les datasets
+        datasets_to_search = list(set(DATASETS_MAPPING.values()))
+        
+        for dataset in datasets_to_search:
+            api_url = f"https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/{dataset}/records"
+            
+            for term in search_terms:
+                where_clause = f'inom LIKE "%{term}%"'
+                if departement:
+                    where_clause += f' AND dep="{departement}"'
+                where_clause += ' AND an IN ("2019","2020","2021","2022","2023","2024")'
+                
+                params = {"where": where_clause, "limit": 50, "select": "inom,dep"}
+                
+                try:
+                    response = requests.get(api_url, params=params, timeout=10)
+                    data = response.json()
+                    
+                    if "results" in data:
+                        for record in data["results"]:
+                            nom = record.get("inom", "")
+                            dept = record.get("dep", "")
+                            if nom and self._is_similar_commune(commune, nom):
+                                variant = {"nom": nom, "departement": dept}
+                                if variant not in variants:
+                                    variants.append(variant)
+                except:
+                    continue
+        
+        if not variants:
+            variants = [{"nom": commune, "departement": departement or ""}]
+        
+        self._cache[cache_key] = variants
+        return variants
+    
+    def _generate_search_terms(self, commune):
+        """Génère les termes de recherche"""
+        terms = [commune]
+        
+        if commune.upper().startswith(('LA ', 'LE ', 'LES ')):
+            base = commune[3:] if commune.upper().startswith('LA ') else commune[4:] if commune.upper().startswith('LES ') else commune[3:]
+            terms.extend([base, f"{base} (LA)"])
+        
+        if '(' in commune:
+            base = re.sub(r'\s*\([^)]+\)\s*', '', commune).strip()
+            if '(LA)' in commune.upper():
+                terms.append(f"LA {base}")
+        
+        return list(set(terms))
+    
+    def _is_similar_commune(self, search_commune, found_commune, threshold=0.8):
+        """Vérifie la similarité"""
+        norm1 = self.normalize_commune_name(search_commune)
+        norm2 = self.normalize_commune_name(found_commune)
+        return SequenceMatcher(None, norm1, norm2).ratio() >= threshold
+
+# Instance globale du fetcher
+@st.cache_resource
+def get_commune_fetcher():
+    return RobustCommuneFetcher()
 
 st.title("📊 Analyse de la santé financière des communes")
 st.markdown("---")
@@ -29,15 +147,15 @@ st.sidebar.header("🔧 Paramètres d'analyse")
 
 # --- Liste des départements ---
 departements_dispo = [f"{i:03d}" for i in range(1, 101)] + ["2A", "2B"]
-dept_selection = st.sidebar.selectbox("Département", departements_dispo)
+dept_selection = st.sidebar.selectbox("Département", departements_dispo, key="dept_select_unique")
 
 # --- Année ---
-annees_dispo = [2023, 2022, 2021]
-annee_selection = st.sidebar.selectbox("Année", annees_dispo)
+annees_dispo = [2024, 2023, 2022, 2021, 2020, 2019]
+annee_selection = st.sidebar.selectbox("Année", annees_dispo, key="annee_select_unique")
 
 # --- Filtres additionnels ---
 st.sidebar.subheader("🔍 Filtres")
-taille_min = st.sidebar.number_input("Population minimale", min_value=0, value=0)
+taille_min = st.sidebar.number_input("Population minimale", min_value=0, value=0, key="pop_min_unique")
 
 # --- Fonction pour récupérer toutes les communes avec gestion d'erreur ---
 @st.cache_data(ttl=3600)  # Cache pendant 1 heure
@@ -45,6 +163,7 @@ def fetch_communes(dep, an):
     """Récupère les données financières des communes avec gestion d'erreur"""
     try:
         dep = str(dep).zfill(3)
+        api_url = get_api_url_for_year(an)  # URL adaptée à l'année
         dfs = []
         limit = 100
         offset = 1
@@ -57,7 +176,7 @@ def fetch_communes(dep, an):
                     "offset": offset
                 }
                 
-                response = requests.get(API_URL, params=params, timeout=30)
+                response = requests.get(api_url, params=params, timeout=30)
                 response.raise_for_status()
                 data = response.json()
 
@@ -104,17 +223,34 @@ def fetch_communes(dep, an):
 
 # --- Fonction pour récupérer les données historiques d'une commune ---
 @st.cache_data(ttl=3600)
-def fetch_historical_commune_data(commune_name, dep, years_range=[2019, 2020, 2021, 2022, 2023]):
-    """Récupère les données historiques d'une commune spécifique"""
+def fetch_historical_commune_data(commune_name, dep, years_range=[2019, 2020, 2021, 2022, 2023, 2024]):
+    """Récupère les données historiques d'une commune spécifique avec gestion des variantes"""
+    fetcher = get_commune_fetcher()
     historical_data = []
+    
+    # Trouve les variantes de la commune
+    variants = fetcher.find_commune_variants(commune_name, dep)
+    
+    if len(variants) > 1:
+        variant_names = [v["nom"] for v in variants]
+        st.info(f"🔍 Variantes détectées pour {commune_name}: {', '.join(set(variant_names))}")
     
     for year in years_range:
         try:
             df_year = fetch_communes(dep, year)
             if not df_year.empty:
-                commune_data = df_year[df_year['Commune'] == commune_name]
-                if not commune_data.empty:
-                    historical_data.append(commune_data.iloc[0])
+                # Essaie chaque variante pour cette année
+                commune_found = False
+                for variant in variants:
+                    commune_data = df_year[df_year['Commune'] == variant["nom"]]
+                    if not commune_data.empty:
+                        historical_data.append(commune_data.iloc[0])
+                        commune_found = True
+                        break
+                
+                if not commune_found:
+                    st.warning(f"Commune {commune_name} non trouvée en {year}")
+                    
         except Exception as e:
             st.warning(f"Données non disponibles pour {commune_name} en {year}")
             continue
@@ -123,6 +259,105 @@ def fetch_historical_commune_data(commune_name, dep, years_range=[2019, 2020, 20
         df_historical = pd.DataFrame(historical_data)
         return df_historical
     return pd.DataFrame()
+
+# --- Fonction utilitaire pour rechercher une commune avec normalisation ---
+def search_commune_in_department(commune_partial_name, dep, year=2023):
+    """Recherche une commune par nom partiel avec normalisation"""
+    fetcher = get_commune_fetcher()
+    
+    try:
+        df_communes = fetch_communes(dep, year)
+        if df_communes.empty:
+            return []
+        
+        # Recherche directe d'abord
+        matches = df_communes[df_communes['Commune'].str.contains(commune_partial_name, case=False, na=False)]
+        
+        if matches.empty:
+            # Recherche avec normalisation
+            normalized_search = fetcher.normalize_commune_name(commune_partial_name)
+            for _, row in df_communes.iterrows():
+                normalized_commune = fetcher.normalize_commune_name(row['Commune'])
+                if normalized_search in normalized_commune or normalized_commune in normalized_search:
+                    matches = pd.concat([matches, row.to_frame().T])
+        
+        return matches['Commune'].unique().tolist()
+        
+    except Exception as e:
+        st.error(f"Erreur lors de la recherche: {e}")
+        return []
+
+# --- Interface principale ---
+if st.button("📈 Analyser le département", key="analyze_button"):
+    if dept_selection and annee_selection:
+        df_communes = fetch_communes(dept_selection, annee_selection)
+        
+        if not df_communes.empty:
+            # Filtrage par taille
+            if taille_min > 0:
+                df_communes = df_communes[df_communes['Population'] >= taille_min]
+            
+            st.success(f"✅ {len(df_communes)} communes trouvées pour le département {dept_selection} en {annee_selection}")
+            
+            # Affichage des données
+            st.subheader("📊 Données des communes")
+            st.dataframe(df_communes, use_container_width=True)
+            
+            # Statistiques rapides
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Nombre de communes", len(df_communes))
+            with col2:
+                pop_totale = df_communes['Population'].sum()
+                st.metric("Population totale", f"{pop_totale:,}")
+            with col3:
+                rrf_moyenne = df_communes['RRF (K€)'].mean()
+                st.metric("RRF moyenne", f"{rrf_moyenne:.0f} K€")
+            with col4:
+                encours_moyen = df_communes['Encours (K€)'].mean()
+                st.metric("Encours moyen", f"{encours_moyen:.0f} K€")
+        else:
+            st.warning("Aucune donnée trouvée pour ce département et cette année")
+
+# --- Section recherche de commune ---
+st.subheader("🔍 Recherche d'une commune spécifique")
+commune_recherche = st.text_input("Nom de la commune à rechercher", key="commune_search")
+
+if commune_recherche and st.button("Rechercher", key="search_button"):
+    communes_trouvees = search_commune_in_department(commune_recherche, dept_selection, annee_selection)
+    
+    if communes_trouvees:
+        st.success(f"Communes trouvées: {', '.join(communes_trouvees)}")
+        
+        # Sélection d'une commune pour l'analyse historique
+        commune_selectionnee = st.selectbox("Sélectionnez une commune pour l'analyse historique", 
+                                           communes_trouvees, key="commune_select")
+        
+        if st.button("📈 Analyser l'historique", key="historical_button"):
+            df_historique = fetch_historical_commune_data(commune_selectionnee, dept_selection)
+            
+            if not df_historique.empty:
+                st.subheader(f"📈 Évolution financière de {commune_selectionnee}")
+                
+                # Graphique d'évolution
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=df_historique['Année'], y=df_historique['RRF (K€)'], 
+                                       mode='lines+markers', name='RRF'))
+                fig.add_trace(go.Scatter(x=df_historique['Année'], y=df_historique['DRF (K€)'], 
+                                       mode='lines+markers', name='DRF'))
+                fig.add_trace(go.Scatter(x=df_historique['Année'], y=df_historique['Épargne brute (K€)'], 
+                                       mode='lines+markers', name='Épargne brute'))
+                
+                fig.update_layout(title=f"Évolution financière - {commune_selectionnee}",
+                                xaxis_title="Année", yaxis_title="Montant (K€)")
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Tableau détaillé
+                st.dataframe(df_historique, use_container_width=True)
+            else:
+                st.warning("Pas de données historiques disponibles pour cette commune")
+    else:
+        st.warning("Aucune commune trouvée avec ce nom")
 
 # --- Fonction pour calculer les KPI historiques ---
 def calculate_historical_kpis(df_historical):
@@ -866,33 +1101,6 @@ else:
                 mime="text/csv"
             )
         
-        # === GÉNÉRATION PDF INDIVIDUELLE ===
-        st.markdown("---")
-        st.subheader("📄 Rapport PDF individuel")
-        
-        commune_pdf = st.selectbox(
-            "Sélectionnez une commune pour générer son rapport PDF", 
-            df_filtered['Commune'].sort_values(),
-            key="pdf_commune_selector"
-        )
-        
-        if commune_pdf:
-            commune_pdf_data = df_filtered[df_filtered['Commune'] == commune_pdf].iloc[0]
-            
-            col_pdf1, col_pdf2 = st.columns([1, 2])
-            
-            with col_pdf1:
-                st.markdown(f"**Commune sélectionnée :** {commune_pdf}")
-                st.markdown(f"**Score :** {commune_pdf_data['Score']:.1f}/100")
-                st.markdown(f"**Niveau :** {commune_pdf_data['Niveau d\'alerte']}")
-            
-            with col_pdf2:
-                # Récupération des données historiques pour le PDF
-                df_historical_pdf = fetch_historical_commune_data(commune_pdf, dept_selection)
-                df_historical_kpi_pdf = None
-                if not df_historical_pdf.empty and len(df_historical_pdf) > 1:
-                    df_historical_kpi_pdf = calculate_historical_kpis(df_historical_pdf)
-                    
         # === SYNTHÈSE ===
         st.markdown("---")
         st.subheader("📋 Synthèse départementale")
