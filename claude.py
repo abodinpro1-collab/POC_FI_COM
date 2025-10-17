@@ -539,81 +539,138 @@ def create_evolution_charts(df_historical_kpi, commune_name):
     return fig_teb, fig_cd, fig_annuite, fig_fdr
 
 # === NOUVEAU SYSTÈME DE SCORING V2 ===
-def score_sante_financiere_v2(row, df_ref):
+# === NOUVEAU SYSTÈME DE SCORING V2 - VERSION CORRIGÉE ===
+
+def score_sante_financiere_v2_CORRIGE(row, df_ref):
     """
     Calcule le score de santé financière avec pondérations (0-100)
+    VERSION CORRIGÉE - Gestion des valeurs négatives et recalibrage des plages
     
     Pondérations :
-    - TEB : 20 points (>15% = vert, 10-15% = orange, <10% = rouge)
-    - CD : 30 points (<8 ans = vert, 8-12 ans = orange, >12 ans = rouge)
-    - Ratio Annuité/CAF : 30 points (<50% = vert, 50-60% = orange, >60% = rouge)
-    - FDR en jours : 20 points (>240j = vert, 60-240j = orange, <60j = rouge)
+    - TEB : 20 points (plage 0-30%)
+    - CD : 30 points (plage 0-15 ans)
+    - Ratio Annuité/CAF : 30 points (plage 0-80%)
+    - FDR en jours : 20 points (plage 0-300 jours)
+    
+    ⚠️ NOUVELLES PLAGES (recalibrées sur données réalistes) :
+    - TEB : 0-30% (au lieu de 0-100%)
+    - CD : 0-15 ans (au lieu de illimité)
+    - Annuité/CAF : 0-80% (au lieu de illimité)
+    - FDR : 0-300 jours (au lieu de illimité)
     """
+    
+    # ========== PRIORITÉ 1 : GESTION DES VALEURS NÉGATIVES ==========
+    
+    # 🔴 CAS CRITIQUE : TEB NÉGATIF = CAF BRUTE NÉGATIVE = COMMUNE EN GRAVE DIFFICULTÉ
+    if pd.isna(row['TEB (%)']) or row['TEB (%)'] < 0:
+        # Commune avec dépenses > recettes = situation critique
+        # Tous les critères basés sur CAF sont invalidés
+        return 0  # Score minimum (commune à risque maximal)
+    
     score = 0
     
-    # 1. TAUX D'ÉPARGNE BRUTE (TEB) - 20 points
+    # ========== 1. TAUX D'ÉPARGNE BRUTE (TEB) - 20 points ==========
+    # PLAGE CORRIGÉE : 0-30% (au lieu de 0-100%)
+    
     if pd.notna(row['TEB (%)']):
-        if row['TEB (%)'] > 15:
-            score += 20  # Vert
-        elif row['TEB (%)'] >= 10:
-            # Interpolation linéaire entre 10% et 15%
-            score += 10 + ((row['TEB (%)'] - 10) / 5) * 10
-        else:
-            # Sous 10%, score proportionnel (max 10 points)
-            score += max(0, (row['TEB (%)'] / 10) * 10)
+        teb_value = row['TEB (%)']
+        
+        # Capper la valeur max à 30%
+        teb_value_capped = min(teb_value, 30)
+        
+        if teb_value_capped > 15:  # Seuil vert
+            score += 20
+        elif teb_value_capped >= 10:  # Seuil orange (interpolation)
+            # Entre 10% et 15% : interpolation linéaire
+            score += 10 + ((teb_value_capped - 10) / 5) * 10
+        elif teb_value_capped >= 5:  # Entre 5% et 10%
+            # Interpolation proportionnelle
+            score += (teb_value_capped / 10) * 10
+        else:  # < 5% : seuil rouge
+            score += max(0, (teb_value_capped / 5) * 5)
     
-    # 2. CAPACITÉ DE DÉSENDETTEMENT (CD) - 30 points
+    # ========== 2. CAPACITÉ DE DÉSENDETTEMENT (CD) - 30 points ==========
+    # PLAGE CORRIGÉE : 0-15 ans (au lieu de illimité)
+    # Renommée : "Années de désendettement"
+    
     if pd.notna(row['CD (années)']) and row['CD (années)'] > 0:
-        if row['CD (années)'] < 8:
-            score += 30  # Vert
-        elif row['CD (années)'] <= 12:
-            # Interpolation linéaire entre 8 et 12 ans
-            score += 15 + ((12 - row['CD (années)']) / 4) * 15
-        else:
-            # Au-dessus de 12 ans, pénalité progressive
-            score += max(0, 15 - (row['CD (années)'] - 12) * 2)
-    else:
-        # Pas de dette ou données manquantes = score neutre
-        score += 15
+        cd_value = row['CD (années)']
+        
+        # Capper la valeur max à 15 ans
+        cd_value_capped = min(cd_value, 15)
+        
+        if cd_value_capped < 8:  # Seuil vert
+            score += 30
+        elif cd_value_capped <= 12:  # Seuil orange (interpolation)
+            # Entre 8 et 12 ans : interpolation linéaire
+            score += 15 + ((12 - cd_value_capped) / 4) * 15
+        else:  # Entre 12 et 15 ans : seuil rouge (pénalité progressive)
+            # Entre 12 et 15 : interpolation progressive
+            score += max(0, 15 - ((cd_value_capped - 12) / 3) * 15)
     
-    # 3. RATIO ANNUITÉ / CAF BRUTE - 30 points
-    if pd.notna(row['Annuité / CAF (%)']):
-        if row['Annuité / CAF (%)'] < 50:
-            score += 30  # Vert
-        elif row['Annuité / CAF (%)'] <= 60:
-            # Interpolation linéaire entre 50% et 60%
-            score += 15 + ((60 - row['Annuité / CAF (%)']) / 10) * 15
-        else:
-            # Au-dessus de 60%, pénalité progressive
-            score += max(0, 15 - (row['Annuité / CAF (%)'] - 60) * 1.5)
     else:
-        # Pas d'annuité = bonne situation
+        # 🔴 CD négative ou nulle = endettement impossible à rembourser
+        score += 0
+    
+    # ========== 3. RATIO ANNUITÉ / CAF BRUTE - 30 points ==========
+    # PLAGE CORRIGÉE : 0-80% (au lieu de illimité)
+    
+    if pd.notna(row['Annuité / CAF (%)']):
+        # 🔴 SI TEB NÉGATIF, ANNUITÉ/CAF EST INVALIDE
+        if row['TEB (%)'] < 0:
+            score += 0  # Commune ne peut pas honorer ses engagements
+        else:
+            annuite_caf_value = row['Annuité / CAF (%)']
+            
+            # Capper la valeur max à 80%
+            annuite_caf_value_capped = min(annuite_caf_value, 80)
+            
+            if annuite_caf_value_capped < 50:  # Seuil vert
+                score += 30
+            elif annuite_caf_value_capped <= 60:  # Seuil orange (interpolation)
+                # Entre 50% et 60% : interpolation linéaire
+                score += 15 + ((60 - annuite_caf_value_capped) / 10) * 15
+            else:  # Entre 60% et 80% : seuil rouge (pénalité progressive)
+                # Entre 60% et 80% : interpolation progressive
+                score += max(0, 15 - ((annuite_caf_value_capped - 60) / 20) * 15)
+    
+    else:
+        # Pas d'annuité = meilleur cas (mais commune rare)
         score += 30
     
-    # 4. FONDS DE ROULEMENT EN JOURS - 20 points
+    # ========== 4. FONDS DE ROULEMENT EN JOURS - 20 points ==========
+    # PLAGE CORRIGÉE : 0-300 jours (au lieu de illimité)
+    
     if pd.notna(row['FDR Jours Commune']):
-        if row['FDR Jours Commune'] > 240:
-            score += 20  # Vert
-        elif row['FDR Jours Commune'] >= 60:
-            # Interpolation linéaire entre 60 et 240 jours
-            score += 10 + ((row['FDR Jours Commune'] - 60) / 180) * 10
-        else:
-            # Sous 60 jours, score proportionnel
-            score += max(0, (row['FDR Jours Commune'] / 60) * 10)
+        fdr_value = row['FDR Jours Commune']
+        
+        # Capper la valeur max à 300 jours
+        fdr_value_capped = min(fdr_value, 300)
+        
+        if fdr_value_capped > 240:  # Seuil vert
+            score += 20
+        elif fdr_value_capped >= 60:  # Seuil orange (interpolation)
+            # Entre 60 et 240 jours : interpolation linéaire
+            score += 10 + ((fdr_value_capped - 60) / 180) * 10
+        else:  # < 60 jours : seuil rouge (proportionnel)
+            score += (fdr_value_capped / 60) * 10
+    
     else:
         # Données manquantes = score neutre
         score += 10
     
     return round(score, 2)
 
-def niveau_alerte_v2(score):
-    """Détermine le niveau d'alerte selon le nouveau système"""
+
+def niveau_alerte_v2_CORRIGE(score):
+    """Détermine le niveau d'alerte selon le système corrigé"""
     if score >= 75:
         return "🟢 Vert"
     elif score >= 50:
         return "🟠 Orange"
     else:
         return "🔴 Rouge"
+
 
 def get_color_alerte(niveau):
     """Retourne la couleur correspondant au niveau"""
@@ -623,6 +680,230 @@ def get_color_alerte(niveau):
         return "#FF8C00"
     else:
         return "#00C851"
+
+# ============================================================
+# SECTION 4 : RADAR COHÉRENT ⭐ PLACER LES FONCTIONS RADAR ICI
+# ============================================================
+
+def normaliser_indicateurs_pour_radar(row):
+    """
+    Normalise les indicateurs sur une échelle cohérente de 0-100
+    
+    LOGIQUE UNIFORME : 
+    - Plus on s'éloigne du CENTRE (0) vers l'EXTÉRIEUR (100) = MIEUX C'EST
+    - Tous les critères vont dans le même sens
+    
+    NOUVELLES PLAGES (réalistes) :
+    - TEB : 0-30% (seuil vert à 15%)
+    - CD : 0-15 ans (seuil vert < 8 ans)
+    - Annuité/CAF : 0-80% (seuil vert < 50%)
+    - FDR : 0-300 jours (seuil vert > 240j)
+    """
+    
+    # 1️⃣ TEB (%) - PLAGE 0-30%
+    if pd.notna(row['TEB (%)']):
+        teb_value = min(row['TEB (%)'], 30)
+        teb_norm = (teb_value / 30) * 100
+    else:
+        teb_norm = 0
+    
+    # 2️⃣ CD - PLAGE 0-15 ANS (INVERSÉE)
+    if pd.notna(row['CD (années)']) and row['CD (années)'] > 0:
+        cd_value = min(row['CD (années)'], 15)
+        cd_norm = ((15 - cd_value) / 15) * 100
+    else:
+        cd_norm = 0
+    
+    # 3️⃣ ANNUITÉ/CAF (%) - PLAGE 0-80% (INVERSÉE)
+    if pd.notna(row['Annuité / CAF (%)']):
+        annuite_caf_value = min(row['Annuité / CAF (%)'], 80)
+        annuite_caf_norm = ((80 - annuite_caf_value) / 80) * 100
+    else:
+        annuite_caf_norm = 100
+    
+    # 4️⃣ FDR - PLAGE 0-300 JOURS
+    if pd.notna(row['FDR Jours Commune']):
+        fdr_value = min(row['FDR Jours Commune'], 300)
+        fdr_norm = (fdr_value / 300) * 100
+    else:
+        fdr_norm = 50
+    
+    # 5️⃣ RIGIDITÉ (%) (INVERSÉE)
+    if pd.notna(row['Rigidité (%)']):
+        rigidite_value = min(row['Rigidité (%)'], 200)
+        rigidite_norm = ((200 - rigidite_value) / 200) * 100
+    else:
+        rigidite_norm = 50
+    
+    return {
+        'TEB_norm': round(teb_norm, 2),
+        'CD_norm': round(cd_norm, 2),
+        'Annuité_CAF_norm': round(annuite_caf_norm, 2),
+        'FDR_norm': round(fdr_norm, 2),
+        'Rigidité_norm': round(rigidite_norm, 2)
+    }
+
+
+def create_radar_coherent(commune_data, df_filtered=None):
+    """
+    Crée un radar COHÉRENT avec plages réalistes
+    DIRECTION UNIFORME : Vers l'EXTÉRIEUR = MIEUX
+    """
+    
+    norms = normaliser_indicateurs_pour_radar(commune_data)
+    
+    categories = [
+        'TEB (%) 0-30%',
+        'Années Désendettement 0-15 ans',
+        'Annuité/CAF (%) 0-80%',
+        'FDR (jours) 0-300j',
+        'Rigidité (%) inversion 0-200%'
+    ]
+    
+    values_commune = [
+        norms['TEB_norm'],
+        norms['CD_norm'],
+        norms['Annuité_CAF_norm'],
+        norms['FDR_norm'],
+        norms['Rigidité_norm']
+    ]
+    
+    # Seuils vert normalisés
+    seuils_vert = [
+        (15 / 30) * 100,              # TEB : 50
+        ((15 - 8) / 15) * 100,        # CD : 46.67
+        ((80 - 50) / 80) * 100,       # Annuité : 37.5
+        (240 / 300) * 100,            # FDR : 80
+        ((200 - 100) / 200) * 100     # Rigidité : 50
+    ]
+    
+    fig = go.Figure()
+    
+    # Trace commune
+    fig.add_trace(go.Scatterpolar(
+        r=values_commune,
+        theta=categories,
+        fill='toself',
+        name=commune_data['Commune'],
+        line=dict(color='#3b82f6', width=3),
+        marker=dict(size=8),
+        fillcolor='rgba(59, 130, 246, 0.25)'
+    ))
+    
+    # Trace seuils vert
+    fig.add_trace(go.Scatterpolar(
+        r=seuils_vert,
+        theta=categories,
+        fill=None,
+        name='Seuil Vert',
+        line=dict(color='#10b981', width=2, dash='dash'),
+        marker=dict(size=6),
+    ))
+    
+    # Trace moyenne strate
+    if df_filtered is not None and not df_filtered.empty:
+        moyennes_strate = df_filtered.apply(normaliser_indicateurs_pour_radar, axis=1).apply(pd.Series).mean()
+        
+        values_strate = [
+            moyennes_strate['TEB_norm'],
+            moyennes_strate['CD_norm'],
+            moyennes_strate['Annuité_CAF_norm'],
+            moyennes_strate['FDR_norm'],
+            moyennes_strate['Rigidité_norm']
+        ]
+        
+        fig.add_trace(go.Scatterpolar(
+            r=values_strate,
+            theta=categories,
+            fill='toself',
+            name='Moyenne Strate',
+            line=dict(color='#f59e0b', width=2, dash='dot'),
+            marker=dict(size=6),
+            fillcolor='rgba(245, 158, 11, 0.15)'
+        ))
+    
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                showticklabels=True,
+                ticks='outside',
+                tickfont=dict(size=10),
+                gridcolor='rgba(243, 244, 246, 0.5)'
+            ),
+            angularaxis=dict(
+                tickfont=dict(size=11)
+            )
+        ),
+        showlegend=True,
+        title=dict(
+            text=f"<b>🎯 Profil Financier Cohérent</b><br><sub>{commune_data['Commune']} | Score: {commune_data['Score']:.0f}/100</sub>",
+            font=dict(size=14)
+        ),
+        height=600,
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=1.05
+        ),
+        font=dict(size=12),
+        margin=dict(l=50, r=150, t=80, b=50)
+    )
+    
+    fig.add_annotation(
+        text="<b>📌 Logique uniforme :</b> Plus vers l'extérieur = Mieux ✅<br>Plus vers le centre = Pire ❌",
+        xref="paper", yref="paper",
+        x=0.5, y=-0.1,
+        showarrow=False,
+        font=dict(size=11, color="#666"),
+        align="center"
+    )
+    
+    return fig
+
+
+def create_tableau_normalisation(commune_data):
+    """
+    Crée un tableau montrant les AVANT/APRÈS normalisation
+    """
+    
+    norms = normaliser_indicateurs_pour_radar(commune_data)
+    
+    tableau = pd.DataFrame({
+        'Critère': [
+            'TEB (%)',
+            'Années Désendettement',
+            'Annuité/CAF (%)',
+            'FDR (jours)',
+            'Rigidité (%)'
+        ],
+        'Valeur Brute': [
+            f"{commune_data['TEB (%)']:.1f}%",
+            f"{commune_data['CD (années)']:.1f} ans",
+            f"{commune_data.get('Annuité / CAF (%)', 'N/A'):.1f}%" if pd.notna(commune_data.get('Annuité / CAF (%)')) else 'N/A',
+            f"{commune_data.get('FDR Jours Commune', 'N/A'):.0f}j" if pd.notna(commune_data.get('FDR Jours Commune')) else 'N/A',
+            f"{commune_data['Rigidité (%)']:.1f}%"
+        ],
+        'Plage': [
+            '0-30%',
+            '0-15 ans',
+            '0-80%',
+            '0-300j',
+            '0-200%'
+        ],
+        'Normalisé (0-100)': [
+            f"{norms['TEB_norm']:.1f}",
+            f"{norms['CD_norm']:.1f}",
+            f"{norms['Annuité_CAF_norm']:.1f}",
+            f"{norms['FDR_norm']:.1f}",
+            f"{norms['Rigidité_norm']:.1f}"
+        ]
+    })
+    
+    return tableau
 
 # --- Fonction pour créer les tranches de population ---
 def create_population_brackets(df):
@@ -794,9 +1075,8 @@ else:
             df_kpi['FDR Jours Moyenne'] = pd.NA
         
         # --- Calcul des scores V2 ---
-        df_kpi['Score'] = df_kpi.apply(score_sante_financiere_v2, axis=1, df_ref=df_kpi)
-        df_kpi['Niveau d\'alerte'] = df_kpi['Score'].apply(niveau_alerte_v2)
-        
+        df_kpi['Score'] = df_kpi.apply(score_sante_financiere_v2_CORRIGE, axis=1, df_ref=df_kpi)
+        df_kpi['Niveau d\'alerte'] = df_kpi['Score'].apply(niveau_alerte_v2_CORRIGE)
         # Création des tranches de population
         df_kpi = create_population_brackets(df_kpi)
         
@@ -1001,7 +1281,7 @@ else:
                 st.markdown("---")
                 st.markdown("**📊 Indicateurs clés :**")
                 st.markdown(f"- TEB : {commune_data['TEB (%)']:.1f}%")
-                st.markdown(f"- CD : {commune_data['CD (années)']:.1f} ans")
+                st.markdown(f"- Années Désendettement : {commune_data['CD (années)']:.1f} ans")
                 if pd.notna(commune_data['Annuité / CAF (%)']):
                     st.markdown(f"- Annuité/CAF : {commune_data['Annuité / CAF (%)']:.1f}%")
                 else:
@@ -1051,49 +1331,16 @@ else:
                 rigidite_strate_norm = max(0, min(100, 200 - rigidite_strate))
                 annuite_caf_strate_norm = max(0, min(100, (60 - annuite_caf_strate) / 60 * 100))
                 fdr_strate_norm = min(100, (fdr_jours_strate / 240) * 100) if fdr_jours_strate > 0 else 50
-                
-                fig_radar = go.Figure()
-                
-                # Trace de la commune
-                fig_radar.add_trace(go.Scatterpolar(
-                    r=[teb_norm, cd_norm, annuite_caf_norm, fdr_norm, rigidite_norm],
-                    theta=categories,
-                    fill='toself',
-                    name=commune_data['Commune'],
-                    line=dict(color=get_color_alerte(commune_data['Niveau d\'alerte']), width=3),
-                    marker=dict(size=8)
-                ))
-                
-                # Trace de la strate officielle
-                fig_radar.add_trace(go.Scatterpolar(
-                    r=[teb_strate_norm, cd_strate_norm, annuite_caf_strate_norm, fdr_strate_norm, rigidite_strate_norm],
-                    theta=categories,
-                    fill='toself',
-                    name='Moyenne Strate Officielle',
-                    line=dict(color='#FFA500', width=2, dash='dash'),
-                    opacity=0.5
-                ))
-                
-                fig_radar.update_layout(
-                    polar=dict(
-                        radialaxis=dict(
-                            visible=True,
-                            range=[0, 100],
-                            showticklabels=True,
-                            ticks='outside'
-                        )),
-                    showlegend=True,
-                    title="Profil financier : Commune vs Strate Officielle (Scoring V2)",
-                    legend=dict(
-                        orientation="h",
-                        yanchor="bottom",
-                        y=-0.2,
-                        xanchor="center",
-                        x=0.5
-                    )
-                )
-                
-                st.plotly_chart(fig_radar, use_container_width=True)
+                    
+                                # Radar cohérent avec VRAIES PLAGES
+                fig_radar_coherent = create_radar_coherent(commune_data, df_filtered)
+                st.plotly_chart(fig_radar_coherent, use_container_width=True)
+
+
+                # Tableau de normalisation (pour expliquer la transformation)
+                st.subheader("📊 Détail de la normalisation")
+                tableau_norm = create_tableau_normalisation(commune_data)
+                st.dataframe(tableau_norm, use_container_width=True, hide_index=True)
                 
                 # Analyse comparative textuelle
                 st.markdown("**🎯 Analyse comparative vs strate officielle :**")
