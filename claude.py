@@ -541,135 +541,98 @@ def create_evolution_charts(df_historical_kpi, commune_name):
 # === NOUVEAU SYSTÈME DE SCORING V2 ===
 # === NOUVEAU SYSTÈME DE SCORING V2 - VERSION CORRIGÉE ===
 
-def score_sante_financiere_v2_CORRIGE(row, df_ref):
+# === NOUVEAU SYSTÈME DE SCORING V3 (AFFINÉ) ===
+# === NOUVEAU SYSTÈME DE SCORING V3 (AFFINÉ) ===
+def score_sante_financiere_v3(row, df_ref):
     """
     Calcule le score de santé financière avec pondérations (0-100)
-    VERSION CORRIGÉE - Gestion des valeurs négatives et recalibrage des plages
+    VERSION 3 - PARAMÈTRES AFFINÉS PAR CLIENT
     
     Pondérations :
-    - TEB : 20 points (plage 0-30%)
-    - CD : 30 points (plage 0-15 ans)
-    - Ratio Annuité/CAF : 30 points (plage 0-80%)
-    - FDR en jours : 20 points (plage 0-300 jours)
-    
-    ⚠️ NOUVELLES PLAGES (recalibrées sur données réalistes) :
-    - TEB : 0-30% (au lieu de 0-100%)
-    - CD : 0-15 ans (au lieu de illimité)
-    - Annuité/CAF : 0-80% (au lieu de illimité)
-    - FDR : 0-300 jours (au lieu de illimité)
+    - TEB : 20 points (>20% = vert, 10-20% = progressif, <10% = rouge)
+    - CD : 30 points (<6 ans = vert, 6-16 ans = progressif, >16 ans = rouge)
+    - Ratio Annuité/CAF : 30 points (<30% = vert, 30-50% = progressif, >50% = rouge)
+    - FDR en jours : 20 points (>240j = vert, 30-240j = progressif, <30j = rouge)
     """
-    
-    # ========== PRIORITÉ 1 : GESTION DES VALEURS NÉGATIVES ==========
-    
-    # 🔴 CAS CRITIQUE : TEB NÉGATIF = CAF BRUTE NÉGATIVE = COMMUNE EN GRAVE DIFFICULTÉ
-    if pd.isna(row['TEB (%)']) or row['TEB (%)'] < 0:
-        # Commune avec dépenses > recettes = situation critique
-        # Tous les critères basés sur CAF sont invalidés
-        return 0  # Score minimum (commune à risque maximal)
-    
     score = 0
     
-    # ========== 1. TAUX D'ÉPARGNE BRUTE (TEB) - 20 points ==========
-    # PLAGE CORRIGÉE : 0-30% (au lieu de 0-100%)
-    
+    # 1. TAUX D'ÉPARGNE BRUTE (TEB) - 20 points
+    # Nouveau seuil : 20% pour le vert (au lieu de 15%)
     if pd.notna(row['TEB (%)']):
-        teb_value = row['TEB (%)']
-        
-        # Capper la valeur max à 30%
-        teb_value_capped = min(teb_value, 30)
-        
-        if teb_value_capped > 15:  # Seuil vert
-            score += 20
-        elif teb_value_capped >= 10:  # Seuil orange (interpolation)
-            # Entre 10% et 15% : interpolation linéaire
-            score += 10 + ((teb_value_capped - 10) / 5) * 10
-        elif teb_value_capped >= 5:  # Entre 5% et 10%
-            # Interpolation proportionnelle
-            score += (teb_value_capped / 10) * 10
-        else:  # < 5% : seuil rouge
-            score += max(0, (teb_value_capped / 5) * 5)
-    
-    # ========== 2. CAPACITÉ DE DÉSENDETTEMENT (CD) - 30 points ==========
-    # PLAGE CORRIGÉE : 0-15 ans (au lieu de illimité)
-    # Renommée : "Années de désendettement"
-    
-    if pd.notna(row['CD (années)']) and row['CD (années)'] > 0:
-        cd_value = row['CD (années)']
-        
-        # Capper la valeur max à 15 ans
-        cd_value_capped = min(cd_value, 15)
-        
-        if cd_value_capped < 8:  # Seuil vert
-            score += 30
-        elif cd_value_capped <= 12:  # Seuil orange (interpolation)
-            # Entre 8 et 12 ans : interpolation linéaire
-            score += 15 + ((12 - cd_value_capped) / 4) * 15
-        else:  # Entre 12 et 15 ans : seuil rouge (pénalité progressive)
-            # Entre 12 et 15 : interpolation progressive
-            score += max(0, 15 - ((cd_value_capped - 12) / 3) * 15)
-    
-    else:
-        # 🔴 CD négative ou nulle = endettement impossible à rembourser
-        score += 0
-    
-    # ========== 3. RATIO ANNUITÉ / CAF BRUTE - 30 points ==========
-    # PLAGE CORRIGÉE : 0-80% (au lieu de illimité)
-    
-    if pd.notna(row['Annuité / CAF (%)']):
-        # 🔴 SI TEB NÉGATIF, ANNUITÉ/CAF EST INVALIDE
-        if row['TEB (%)'] < 0:
-            score += 0  # Commune ne peut pas honorer ses engagements
+        if row['TEB (%)'] > 20:
+            score += 20  # Vert - plein score
+        elif row['TEB (%)'] >= 10:
+            # Interpolation linéaire entre 10% et 20%
+            score += ((row['TEB (%)'] - 10) / 10) * 20
         else:
-            annuite_caf_value = row['Annuité / CAF (%)']
-            
-            # Capper la valeur max à 80%
-            annuite_caf_value_capped = min(annuite_caf_value, 80)
-            
-            if annuite_caf_value_capped < 50:  # Seuil vert
-                score += 30
-            elif annuite_caf_value_capped <= 60:  # Seuil orange (interpolation)
-                # Entre 50% et 60% : interpolation linéaire
-                score += 15 + ((60 - annuite_caf_value_capped) / 10) * 15
-            else:  # Entre 60% et 80% : seuil rouge (pénalité progressive)
-                # Entre 60% et 80% : interpolation progressive
-                score += max(0, 15 - ((annuite_caf_value_capped - 60) / 20) * 15)
+            # Sous 10%, score proportionnel (max 0 points)
+            score += 0
     
+    # 2. CAPACITÉ DE DÉSENDETTEMENT (CD) - 30 points
+    # Nouveau : débute à 6 ans (au lieu de 8), zéro à 16 ans (au lieu de 12)
+    if pd.notna(row['Années de Désendettement']) and row['Années de Désendettement'] > 0:
+        if row['Années de Désendettement'] < 6:
+            score += 30  # Vert - plein score
+        elif row['Années de Désendettement'] <= 16:
+            # Interpolation linéaire entre 6 et 16 ans
+            score += 30 - ((row['Années de Désendettement'] - 6) / 10) * 30
+        else:
+            # Au-dessus de 16 ans = 0 points
+            score += 0
     else:
-        # Pas d'annuité = meilleur cas (mais commune rare)
+        # Pas de dette ou données manquantes = score neutre
+        score += 15
+    
+    # 3. RATIO ANNUITÉ / CAF BRUTE - 30 points
+    # Nouveau : débute à 30% (au lieu de 50%)
+    if pd.notna(row['Annuité / CAF (%)']):
+        if row['Annuité / CAF (%)'] < 30:
+            score += 30  # Vert - plein score
+        elif row['Annuité / CAF (%)'] <= 50:
+            # Interpolation linéaire entre 30% et 50%
+            score += 30 - ((row['Annuité / CAF (%)'] - 30) / 20) * 30
+        else:
+            # Au-dessus de 50% = 0 points
+            score += 0
+    else:
+        # Pas d'annuité = bonne situation
         score += 30
     
-    # ========== 4. FONDS DE ROULEMENT EN JOURS - 20 points ==========
-    # PLAGE CORRIGÉE : 0-300 jours (au lieu de illimité)
-    
+    # 4. FONDS DE ROULEMENT EN JOURS - 20 points
+    # Nouveau : débute à 30 jours (au lieu de 0), moyenne à partir de 70/75 jours
     if pd.notna(row['FDR Jours Commune']):
-        fdr_value = row['FDR Jours Commune']
-        
-        # Capper la valeur max à 300 jours
-        fdr_value_capped = min(fdr_value, 300)
-        
-        if fdr_value_capped > 240:  # Seuil vert
-            score += 20
-        elif fdr_value_capped >= 60:  # Seuil orange (interpolation)
-            # Entre 60 et 240 jours : interpolation linéaire
-            score += 10 + ((fdr_value_capped - 60) / 180) * 10
-        else:  # < 60 jours : seuil rouge (proportionnel)
-            score += (fdr_value_capped / 60) * 10
-    
+        if row['FDR Jours Commune'] > 240:
+            score += 20  # Vert - plein score
+        elif row['FDR Jours Commune'] >= 70:
+            # Interpolation linéaire entre 70 et 240 jours
+            score += ((row['FDR Jours Commune'] - 70) / 170) * 20
+        elif row['FDR Jours Commune'] >= 30:
+            # Interpolation linéaire entre 30 et 70 jours
+            score += ((row['FDR Jours Commune'] - 30) / 40) * 10
+        else:
+            # Sous 30 jours = 0 points
+            score += 0
     else:
-        # Données manquantes = score neutre
+        # Données manquantes = score neutre (10 points)
         score += 10
     
     return round(score, 2)
 
 
-def niveau_alerte_v2_CORRIGE(score):
-    """Détermine le niveau d'alerte selon le système corrigé"""
-    if score >= 75:
-        return "🟢 Vert"
-    elif score >= 50:
-        return "🟠 Orange"
-    else:
-        return "🔴 Rouge"
+def niveau_alerte_v3(score):
+    """Détermine le niveau d'alerte selon le système V3 (inchangé)"""
+    if pd.notna(score):
+        if score >= 75:
+            return "🟢 Vert"
+        elif score >= 50:
+            return "🟠 Orange"
+        else:
+            return "🔴 Rouge"
+    return "❓ N/A"
+
+
+# === DOCUMENTATION DES CHANGEMENTS V3 ===
+
 
 
 def get_color_alerte(niveau):
@@ -695,7 +658,7 @@ def normaliser_indicateurs_pour_radar(row):
     
     NOUVELLES PLAGES (réalistes) :
     - TEB : 0-30% (seuil vert à 15%)
-    - CD : 0-15 ans (seuil vert < 8 ans)
+    - Années de Désendettement : 0-15 ans (seuil vert < 8 ans)
     - Annuité/CAF : 0-80% (seuil vert < 50%)
     - FDR : 0-300 jours (seuil vert > 240j)
     """
@@ -708,8 +671,8 @@ def normaliser_indicateurs_pour_radar(row):
         teb_norm = 0
     
     # 2️⃣ CD - PLAGE 0-15 ANS (INVERSÉE)
-    if pd.notna(row['CD (années)']) and row['CD (années)'] > 0:
-        cd_value = min(row['CD (années)'], 15)
+    if pd.notna(row['Années de Désendettement']) and row['Années de Désendettement'] > 0:
+        cd_value = min(row['Années de Désendettement'], 15)
         cd_norm = ((15 - cd_value) / 15) * 100
     else:
         cd_norm = 0
@@ -882,7 +845,7 @@ def create_tableau_normalisation(commune_data):
         ],
         'Valeur Brute': [
             f"{commune_data['TEB (%)']:.1f}%",
-            f"{commune_data['CD (années)']:.1f} ans",
+            f"{commune_data['Années de Désendettement']:.1f} ans",
             f"{commune_data.get('Annuité / CAF (%)', 'N/A'):.1f}%" if pd.notna(commune_data.get('Annuité / CAF (%)')) else 'N/A',
             f"{commune_data.get('FDR Jours Commune', 'N/A'):.0f}j" if pd.notna(commune_data.get('FDR Jours Commune')) else 'N/A',
             f"{commune_data['Rigidité (%)']:.1f}%"
@@ -1029,7 +992,7 @@ else:
         
         # --- KPI de base ---
         df_kpi["TEB (%)"] = df_kpi["Épargne brute (K€)"] / df_kpi["RRF (K€)"].replace(0, pd.NA) * 100
-        df_kpi["CD (années)"] = df_kpi["Encours (K€)"] / df_kpi["Épargne brute (K€)"].replace(0, pd.NA)
+        df_kpi["Années de Désendettement"] = df_kpi["Encours (K€)"] / df_kpi["Épargne brute (K€)"].replace(0, pd.NA)
         df_kpi["Rigidité (%)"] = (df_kpi["DRF (K€)"] / df_kpi["RRF (K€)"].replace(0, pd.NA) * 100)
         
         # Encours / hab : utiliser directement la colonne si disponible
@@ -1075,8 +1038,8 @@ else:
             df_kpi['FDR Jours Moyenne'] = pd.NA
         
         # --- Calcul des scores V2 ---
-        df_kpi['Score'] = df_kpi.apply(score_sante_financiere_v2_CORRIGE, axis=1, df_ref=df_kpi)
-        df_kpi['Niveau d\'alerte'] = df_kpi['Score'].apply(niveau_alerte_v2_CORRIGE)
+        df_kpi['Score'] = df_kpi.apply(score_sante_financiere_v3, axis=1, df_ref=df_kpi)
+        df_kpi['Niveau d\'alerte'] = df_kpi['Score'].apply(niveau_alerte_v3)
         # Création des tranches de population
         df_kpi = create_population_brackets(df_kpi)
         
@@ -1158,7 +1121,7 @@ else:
         col1, col2 = st.columns(2)
         
         with col1:
-            fig_scatter = px.scatter(df_filtered, x='TEB (%)', y='CD (années)',
+            fig_scatter = px.scatter(df_filtered, x='TEB (%)', y='Années de Désendettement',
                                    color='Niveau d\'alerte', size='Population',
                                    hover_data=['Commune', 'Score'],
                                    title="💰 Taux d'épargne vs Capacité de désendettement",
@@ -1250,7 +1213,7 @@ else:
         
         with col1:
             st.markdown("#### 🔴 Top 25 - Communes les plus fragiles")
-            colonnes_top = ['Commune', 'Population', 'Score', 'TEB (%)', 'CD (années)', 'Annuité / CAF (%)']
+            colonnes_top = ['Commune', 'Population', 'Score', 'TEB (%)', 'Années de Désendettement', 'Annuité / CAF (%)']
             if 'FDR Jours Commune' in df_filtered.columns:
                 colonnes_top.append('FDR Jours Commune')
             top_risk = df_filtered.nsmallest(25, 'Score')[colonnes_top]
@@ -1281,7 +1244,7 @@ else:
                 st.markdown("---")
                 st.markdown("**📊 Indicateurs clés :**")
                 st.markdown(f"- TEB : {commune_data['TEB (%)']:.1f}%")
-                st.markdown(f"- Années Désendettement : {commune_data['CD (années)']:.1f} ans")
+                st.markdown(f"- Années Désendettement : {commune_data['Années de Désendettement']:.1f} ans")
                 if pd.notna(commune_data['Annuité / CAF (%)']):
                     st.markdown(f"- Annuité/CAF : {commune_data['Annuité / CAF (%)']:.1f}%")
                 else:
@@ -1297,7 +1260,7 @@ else:
                 
                 # Normalisation des valeurs COMMUNE (0-100)
                 teb_norm = min(100, (commune_data['TEB (%)'] / 15) * 100)
-                cd_norm = max(0, min(100, (12 - commune_data['CD (années)']) / 12 * 100))
+                cd_norm = max(0, min(100, (12 - commune_data['Années de Désendettement']) / 12 * 100))
                 
                 if pd.notna(commune_data.get('Annuité / CAF (%)')):
                     annuite_caf_norm = max(0, min(100, (60 - commune_data['Annuité / CAF (%)']) / 60 * 100))
@@ -1352,9 +1315,9 @@ else:
                     comparaisons.append(f"⚠️ TEB inférieur à la strate ({commune_data['TEB (%)']:.1f}% vs {teb_strate:.1f}%)")
                 
                 if cd_norm > cd_strate_norm + 10:
-                    comparaisons.append(f"✅ Endettement mieux maîtrisé que la strate ({commune_data['CD (années)']:.1f} ans vs {cd_strate:.1f} ans)")
+                    comparaisons.append(f"✅ Endettement mieux maîtrisé que la strate ({commune_data['Années de Désendettement']:.1f} ans vs {cd_strate:.1f} ans)")
                 elif cd_norm < cd_strate_norm - 10:
-                    comparaisons.append(f"⚠️ Endettement plus élevé que la strate ({commune_data['CD (années)']:.1f} ans vs {cd_strate:.1f} ans)")
+                    comparaisons.append(f"⚠️ Endettement plus élevé que la strate ({commune_data['Années de Désendettement']:.1f} ans vs {cd_strate:.1f} ans)")
                 
                 if pd.notna(commune_data.get('Annuité / CAF (%)')):
                     if annuite_caf_norm > annuite_caf_strate_norm + 10:
@@ -1477,7 +1440,7 @@ else:
         with tab1:
             colonnes_kpi = [
                 "Commune", "Population", 
-                "TEB (%)", "CD (années)", 
+                "TEB (%)", "Années de Désendettement", 
                 "Annuité / CAF (%)", "FDR Jours Commune",
                 "Rigidité (%)", "Score", "Niveau d'alerte"
             ]
@@ -1603,17 +1566,17 @@ else:
         with col1:
             st.markdown("**📊 Moyennes départementales**")
             stats_df = pd.DataFrame({
-                'Indicateur': ['TEB (%)', 'CD (années)', 'Annuité/CAF (%)', 'FDR (jours)', 'Score (/100)'],
+                'Indicateur': ['TEB (%)', 'Années de Désendettement', 'Annuité/CAF (%)', 'FDR (jours)', 'Score (/100)'],
                 'Moyenne': [
                     df_filtered['TEB (%)'].mean(),
-                    df_filtered['CD (années)'].mean(),
+                    df_filtered['Années de Désendettement'].mean(),
                     df_filtered['Annuité / CAF (%)'].mean(),
                     df_filtered['FDR Jours Commune'].mean() if 'FDR Jours Commune' in df_filtered.columns else None,
                     df_filtered['Score'].mean()
                 ],
                 'Médiane': [
                     df_filtered['TEB (%)'].median(),
-                    df_filtered['CD (années)'].median(),
+                    df_filtered['Années de Désendettement'].median(),
                     df_filtered['Annuité / CAF (%)'].median(),
                     df_filtered['FDR Jours Commune'].median() if 'FDR Jours Commune' in df_filtered.columns else None,
                     df_filtered['Score'].median()
@@ -1630,9 +1593,9 @@ else:
             teb_rouge = len(df_filtered[df_filtered['TEB (%)'] < 8])
             
             # CD
-            cd_vert = len(df_filtered[df_filtered['CD (années)'] < 8])
-            cd_orange = len(df_filtered[(df_filtered['CD (années)'] >= 8) & (df_filtered['CD (années)'] <= 12)])
-            cd_rouge = len(df_filtered[df_filtered['CD (années)'] > 12])
+            cd_vert = len(df_filtered[df_filtered['Années de Désendettement'] < 8])
+            cd_orange = len(df_filtered[(df_filtered['Années de Désendettement'] >= 8) & (df_filtered['Années de Désendettement'] <= 12)])
+            cd_rouge = len(df_filtered[df_filtered['Années de Désendettement'] > 12])
             
             # Annuité/CAF
             ann_vert = len(df_filtered[df_filtered['Annuité / CAF (%)'] < 50])
