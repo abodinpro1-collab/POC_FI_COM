@@ -387,6 +387,8 @@ if commune_recherche and st.button("Rechercher", key="search_button"):
         st.warning("Aucune commune trouvée avec ce nom")
 
 # --- Fonction pour calculer les KPI historiques ---
+# --- Fonction pour calculer les KPI historiques ---
+# --- Fonction pour calculer les KPI historiques (VERSION V3) ---
 def calculate_historical_kpis(df_historical):
     """Calcule les KPI historiques pour la commune et sa strate"""
     if df_historical.empty:
@@ -394,9 +396,13 @@ def calculate_historical_kpis(df_historical):
     
     df_kpi_hist = df_historical.copy()
     
+    # ============================================
+    # 1. CALCULER TOUS LES KPI D'ABORD
+    # ============================================
+    
     # KPI Commune
     df_kpi_hist["TEB Commune (%)"] = df_kpi_hist["Épargne brute (K€)"] / df_kpi_hist["RRF (K€)"].replace(0, pd.NA) * 100
-    df_kpi_hist["CD Commune (années)"] = df_kpi_hist["Encours (K€)"] / df_kpi_hist["Épargne brute (K€)"].replace(0, pd.NA)
+    df_kpi_hist["Années de Désendettement"] = df_kpi_hist["Encours (K€)"] / df_kpi_hist["Épargne brute (K€)"].replace(0, pd.NA)
     df_kpi_hist["Annuité/CAF Commune (%)"] = df_kpi_hist["Annuité (K€)"] / df_kpi_hist["Épargne brute (K€)"].replace(0, pd.NA) * 100
     
     # ✅ FDR en jours - VERSION CORRIGÉE
@@ -404,7 +410,8 @@ def calculate_historical_kpis(df_historical):
         df_kpi_hist['FDR Jours Commune'] = (
             df_kpi_hist['FDR / hab Commune'] / df_kpi_hist['DRF / hab Commune'].replace(0, pd.NA) * 365
         ).round(2)
-        # Sécurité
+    else:
+        df_kpi_hist['FDR Jours Commune'] = pd.NA
 
     # KPI Strate
     df_kpi_hist["TEB Strate (%)"] = df_kpi_hist["Épargne brute - Moy. strate (K€)"] / df_kpi_hist["RRF - Moy. strate (K€)"].replace(0, pd.NA) * 100
@@ -420,8 +427,22 @@ def calculate_historical_kpis(df_historical):
     else:
         df_kpi_hist['FDR Jours Moyenne'] = pd.NA
     
+    # ============================================
+    # 2. CRÉER LES COLONNES DE SCORING POUR V3
+    # ============================================
+    # Créer des colonnes temporaires pour le scoring V3
+    df_kpi_hist["TEB (%)"] = df_kpi_hist["TEB Commune (%)"]
+    # "Années de Désendettement" est déjà présente
+    df_kpi_hist["Annuité / CAF (%)"] = df_kpi_hist["Annuité/CAF Commune (%)"]
+    # FDR Jours Commune est déjà présente
+    
+    # ============================================
+    # 3. CALCULER LE SCORE V3
+    # ============================================
+    df_kpi_hist['Score Commune'] = df_kpi_hist.apply(score_sante_financiere_v3, axis=1, df_ref=df_kpi_hist)
+    df_kpi_hist['Niveau d\'alerte'] = df_kpi_hist['Score Commune'].apply(niveau_alerte_v3)
+    
     return df_kpi_hist
-
 # --- Fonction pour créer les graphiques d'évolution ---
 def create_evolution_charts(df_historical_kpi, commune_name):
     """Crée les graphiques d'évolution des KPI"""
@@ -459,7 +480,7 @@ def create_evolution_charts(df_historical_kpi, commune_name):
     fig_cd = go.Figure()
     fig_cd.add_trace(go.Scatter(
         x=df_historical_kpi['Année'], 
-        y=df_historical_kpi['CD Commune (années)'],
+        y=df_historical_kpi['Années de Désendettement'],
         mode='lines+markers',
         name=f'{commune_name}',
         line=dict(color='#1f77b4', width=3),
@@ -538,10 +559,374 @@ def create_evolution_charts(df_historical_kpi, commune_name):
     
     return fig_teb, fig_cd, fig_annuite, fig_fdr
 
-# === NOUVEAU SYSTÈME DE SCORING V2 ===
-# === NOUVEAU SYSTÈME DE SCORING V2 - VERSION CORRIGÉE ===
+def create_score_evolution_chart(df_historical_kpi, commune_name):
+    """
+    Crée un graphique d'évolution du score avec tendance linéaire
+    """
+    if df_historical_kpi.empty or len(df_historical_kpi) < 2:
+        return None
+    
+    df = df_historical_kpi.sort_values('Année').reset_index(drop=True)
+    
+    # Calcul de la ligne de tendance (régression linéaire)
+    from scipy import stats
+    
+    # Convertir les années en valeurs numériques pour la régression
+    x = np.arange(len(df))
+    y = df['Score Commune'].values
+    
+    # Régression linéaire
+    slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
+    tendance = slope * x + intercept
+    
+    # Création de la figure
+    fig = go.Figure()
+    
+    # Ligne du score réel
+    fig.add_trace(go.Scatter(
+        x=df['Année'],
+        y=df['Score Commune'],
+        mode='lines+markers',
+        name=commune_name,
+        line=dict(color='#1f77b4', width=3),
+        marker=dict(size=10, symbol='circle'),
+        fill=None,
+        hovertemplate='<b>%{x}</b><br>Score : %{y:.1f}/100<extra></extra>'
+    ))
+    
+        
+    # Zones de couleur (seuils de scoring)
+    fig.add_hrect(y0=75, y1=100, fillcolor="#00C851", opacity=0.1, layer="below", line_width=0)
+    fig.add_hrect(y0=50, y1=75, fillcolor="#FF8C00", opacity=0.1, layer="below", line_width=0)
+    fig.add_hrect(y0=0, y1=50, fillcolor="#FF4B4B", opacity=0.1, layer="below", line_width=0)
+    
+        
+    # Mise en page
+    fig.update_layout(
+        title=f"📈 Évolution du score de santé financière - {commune_name} (2019-2024)",
+        xaxis_title="Année",
+        yaxis_title="Score de santé (/100)",
+        hovermode='x unified',
+        template='plotly_white',
+        yaxis=dict(range=[0, 100]),
+        showlegend=True,
+        legend=dict(
+            orientation="v",
+            yanchor="bottom",
+            y=0.01,
+            xanchor="left",
+            x=0.01
+        ),
+        height=500
+    )
+       
+    return fig
 
-# === NOUVEAU SYSTÈME DE SCORING V3 (AFFINÉ) ===
+# === NOUVELLES FONCTIONS DE VISUALISATION ===
+
+def create_score_evolution_stacked_bar(df_historical_kpi, commune_name):
+    """
+    Crée un graphique en barres empilées montrant la contribution de chaque composante au score
+    """
+    if df_historical_kpi.empty or len(df_historical_kpi) < 2:
+        return None
+    
+    df = df_historical_kpi.sort_values('Année').reset_index(drop=True)
+    
+    # Recalculer les composantes du score normalisées (0-100)
+    # pour visualiser la contribution
+    
+    # 1. TEB contribution (0-20 points, normalisé à 0-100)
+    teb_scores = []
+    for _, row in df.iterrows():
+        if pd.notna(row['TEB (%)']):
+            if row['TEB (%)'] > 20:
+                teb_scores.append(20)
+            elif row['TEB (%)'] >= 10:
+                teb_scores.append(((row['TEB (%)'] - 10) / 10) * 20)
+            else:
+                teb_scores.append(0)
+        else:
+            teb_scores.append(0)
+    
+    # 2. CD contribution (0-30 points, normalisé à 0-100)
+    cd_scores = []
+    for _, row in df.iterrows():
+        if pd.notna(row.get('Années de Désendettement')) and row.get('Années de Désendettement') > 0:
+            cd_value = row.get('Années de Désendettement')
+            if cd_value < 6:
+                cd_scores.append(30)
+            elif cd_value <= 16:
+                cd_scores.append(30 - ((cd_value - 6) / 10) * 30)
+            else:
+                cd_scores.append(0)
+        else:
+            cd_scores.append(15)
+    
+    # 3. Annuité/CAF contribution (0-30 points, normalisé à 0-100)
+    annuite_scores = []
+    for _, row in df.iterrows():
+        if pd.notna(row.get('Annuité / CAF (%)')):
+            annuite_caf = row.get('Annuité / CAF (%)')
+            if annuite_caf < 30:
+                annuite_scores.append(30)
+            elif annuite_caf <= 50:
+                annuite_scores.append(30 - ((annuite_caf - 30) / 20) * 30)
+            else:
+                annuite_scores.append(0)
+        else:
+            annuite_scores.append(30)
+    
+    # 4. FDR contribution (0-20 points, normalisé à 0-100)
+    fdr_scores = []
+    for _, row in df.iterrows():
+        if pd.notna(row.get('FDR Jours Commune')):
+            fdr_jours = row.get('FDR Jours Commune')
+            if fdr_jours > 240:
+                fdr_scores.append(20)
+            elif fdr_jours >= 70:
+                fdr_scores.append(((fdr_jours - 70) / 170) * 20)
+            elif fdr_jours >= 30:
+                fdr_scores.append(((fdr_jours - 30) / 40) * 10)
+            else:
+                fdr_scores.append(0)
+        else:
+            fdr_scores.append(10)
+    
+    # Créer le dataframe pour le stacked bar
+    df_stacked = pd.DataFrame({
+        'Année': df['Année'],
+        'TEB (20 pts)': teb_scores,
+        'Annuité/CAF (30 pts)': annuite_scores,
+        'CD (30 pts)': cd_scores,
+        'FDR (20 pts)': fdr_scores,
+    })
+    
+    fig = go.Figure()
+    
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+    
+    # Ordre d'empilement : FDR en bas, puis CD, Annuité/CAF, TEB en haut
+    fig.add_trace(go.Bar(
+        x=df_stacked['Année'],
+        y=df_stacked['FDR (20 pts)'],
+        name='FDR (20 pts)',
+        marker_color=colors[3],
+        hovertemplate='<b>%{x}</b><br>FDR : %{y:.1f} pts<extra></extra>'
+    ))
+    
+    fig.add_trace(go.Bar(
+        x=df_stacked['Année'],
+        y=df_stacked['CD (30 pts)'],
+        name='CD (30 pts)',
+        marker_color=colors[2],
+        hovertemplate='<b>%{x}</b><br>CD : %{y:.1f} pts<extra></extra>'
+    ))
+    
+    fig.add_trace(go.Bar(
+        x=df_stacked['Année'],
+        y=df_stacked['Annuité/CAF (30 pts)'],
+        name='Annuité/CAF (30 pts)',
+        marker_color=colors[1],
+        hovertemplate='<b>%{x}</b><br>Annuité/CAF : %{y:.1f} pts<extra></extra>'
+    ))
+    
+    fig.add_trace(go.Bar(
+        x=df_stacked['Année'],
+        y=df_stacked['TEB (20 pts)'],
+        name='TEB (20 pts)',
+        marker_color=colors[0],
+        hovertemplate='<b>%{x}</b><br>TEB : %{y:.1f} pts<extra></extra>'
+    ))
+    
+    fig.update_layout(
+        barmode='stack',
+        title=f"📊 Évolution du score par composante (stacked) - {commune_name}",
+        xaxis_title="Année",
+        yaxis_title="Points",
+        hovermode='x unified',
+        template='plotly_white',
+        height=500,
+        showlegend=True,
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01
+        )
+    )
+    
+    return fig
+
+
+def create_score_evolution_lines(df_historical_kpi, commune_name):
+    """
+    Crée un graphique en lignes montrant l'évolution du score global 
+    ET de chaque composante normalisée à 0-100
+    """
+    if df_historical_kpi.empty or len(df_historical_kpi) < 2:
+        return None
+    
+    df = df_historical_kpi.sort_values('Année').reset_index(drop=True)
+    
+    # Recalculer les composantes du score normalisées (0-100)
+    
+    # 1. TEB contribution (0-20 points, normalisé à 0-100)
+    teb_norm = []
+    for _, row in df.iterrows():
+        if pd.notna(row['TEB (%)']):
+            if row['TEB (%)'] > 20:
+                teb_norm.append(100)
+            elif row['TEB (%)'] >= 10:
+                score_pts = ((row['TEB (%)'] - 10) / 10) * 20
+                teb_norm.append((score_pts / 20) * 100)
+            else:
+                teb_norm.append(0)
+        else:
+            teb_norm.append(0)
+    
+    # 2. CD contribution (0-30 points, normalisé à 0-100)
+    cd_norm = []
+    for _, row in df.iterrows():
+        if pd.notna(row.get('Années de Désendettement')) and row.get('Années de Désendettement') > 0:
+            cd_value = row.get('Années de Désendettement')
+            if cd_value < 6:
+                cd_norm.append(100)
+            elif cd_value <= 16:
+                score_pts = 30 - ((cd_value - 6) / 10) * 30
+                cd_norm.append((score_pts / 30) * 100)
+            else:
+                cd_norm.append(0)
+        else:
+            cd_norm.append(50)
+    
+    # 3. Annuité/CAF contribution (0-30 points, normalisé à 0-100)
+    annuite_norm = []
+    for _, row in df.iterrows():
+        if pd.notna(row.get('Annuité / CAF (%)')):
+            annuite_caf = row.get('Annuité / CAF (%)')
+            if annuite_caf < 30:
+                annuite_norm.append(100)
+            elif annuite_caf <= 50:
+                score_pts = 30 - ((annuite_caf - 30) / 20) * 30
+                annuite_norm.append((score_pts / 30) * 100)
+            else:
+                annuite_norm.append(0)
+        else:
+            annuite_norm.append(100)
+    
+    # 4. FDR contribution (0-20 points, normalisé à 0-100)
+    fdr_norm = []
+    for _, row in df.iterrows():
+        if pd.notna(row.get('FDR Jours Commune')):
+            fdr_jours = row.get('FDR Jours Commune')
+            if fdr_jours > 240:
+                fdr_norm.append(100)
+            elif fdr_jours >= 70:
+                score_pts = ((fdr_jours - 70) / 170) * 20
+                fdr_norm.append((score_pts / 20) * 100)
+            elif fdr_jours >= 30:
+                score_pts = ((fdr_jours - 30) / 40) * 10
+                fdr_norm.append((score_pts / 20) * 100)
+            else:
+                fdr_norm.append(0)
+        else:
+            fdr_norm.append(50)
+    
+    fig = go.Figure()
+    
+    # Score global (ligne épaisse en premier plan)
+    fig.add_trace(go.Scatter(
+        x=df['Année'],
+        y=df['Score Commune'],
+        mode='lines+markers',
+        name='Score Global (/100)',
+        line=dict(color='black', width=4),
+        marker=dict(size=12, symbol='circle'),
+        hovertemplate='<b>%{x}</b><br>Score : %{y:.1f}/100<extra></extra>'
+    ))
+    
+    # TEB normalisé (0-100)
+    fig.add_trace(go.Scatter(
+        x=df['Année'],
+        y=teb_norm,
+        mode='lines+markers',
+        name='TEB Santé (0-100)',
+        line=dict(color='#1f77b4', width=2, dash='dash'),
+        marker=dict(size=8),
+        opacity=0.7,
+        hovertemplate='<b>%{x}</b><br>TEB Santé : %{y:.0f}%<extra></extra>'
+    ))
+    
+    # Annuité/CAF normalisé (0-100)
+    fig.add_trace(go.Scatter(
+        x=df['Année'],
+        y=annuite_norm,
+        mode='lines+markers',
+        name='Annuité/CAF Santé (0-100)',
+        line=dict(color='#ff7f0e', width=2, dash='dash'),
+        marker=dict(size=8),
+        opacity=0.7,
+        hovertemplate='<b>%{x}</b><br>Annuité/CAF Santé : %{y:.0f}%<extra></extra>'
+    ))
+    
+    # CD normalisé (0-100)
+    fig.add_trace(go.Scatter(
+        x=df['Année'],
+        y=cd_norm,
+        mode='lines+markers',
+        name='CD Santé (0-100)',
+        line=dict(color='#2ca02c', width=2, dash='dash'),
+        marker=dict(size=8),
+        opacity=0.7,
+        hovertemplate='<b>%{x}</b><br>CD Santé : %{y:.0f}%<extra></extra>'
+    ))
+    
+    # FDR normalisé (0-100)
+    fig.add_trace(go.Scatter(
+        x=df['Année'],
+        y=fdr_norm,
+        mode='lines+markers',
+        name='FDR Santé (0-100)',
+        line=dict(color='#d62728', width=2, dash='dash'),
+        marker=dict(size=8),
+        opacity=0.7,
+        hovertemplate='<b>%{x}</b><br>FDR Santé : %{y:.0f}%<extra></extra>'
+    ))
+    
+    # Zones de seuil
+    fig.add_hrect(y0=75, y1=100, fillcolor="#00C851", opacity=0.05, layer="below", line_width=0)
+    fig.add_hrect(y0=50, y1=75, fillcolor="#FF8C00", opacity=0.05, layer="below", line_width=0)
+    fig.add_hrect(y0=0, y1=50, fillcolor="#FF4B4B", opacity=0.05, layer="below", line_width=0)
+    
+    # Lignes de seuil
+    fig.add_hline(y=75, line_dash="dash", line_color="green", line_width=1,
+                  annotation_text="Seuil Vert (75)", annotation_position="right")
+    fig.add_hline(y=50, line_dash="dash", line_color="orange", line_width=1,
+                  annotation_text="Seuil Orange (50)", annotation_position="right")
+    
+    fig.update_layout(
+        title=f"📈 Évolution détaillée du score par composante - {commune_name}",
+        xaxis_title="Année",
+        yaxis_title="Score (0-100)",
+        hovermode='x unified',
+        template='plotly_white',
+        height=600,
+        yaxis=dict(range=[0, 100]),
+        showlegend=True,
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01
+        )
+    )
+    
+    return fig
+
+
 # === NOUVEAU SYSTÈME DE SCORING V3 (AFFINÉ) ===
 def score_sante_financiere_v3(row, df_ref):
     """
@@ -1337,101 +1722,162 @@ else:
                 else:
                     st.markdown("- 📊 Performance globalement dans la moyenne de la strate officielle")
             
-            # === ANALYSE PLURIANNUELLE ===
+# === ANALYSE PLURIANNUELLE ===
+        st.markdown("---")
+        st.subheader(f"📊 Évolution pluriannuelle : {commune_selectionnee}")
+        st.markdown("*Comparaison avec la moyenne de la strate officielle (2019-2024)*")
+        
+        with st.spinner("Chargement des données historiques..."):
+            df_historical = fetch_historical_commune_data(commune_selectionnee, dept_selection)
+        
+        if not df_historical.empty and len(df_historical) > 1:
+            df_historical_kpi = calculate_historical_kpis(df_historical)
+            
+            # === ONGLETS POUR LES DEUX VISUALISATIONS ===
+            tab_score_global, tab_score_stacked, tab_score_lines = st.tabs([
+                "📊 Score Global",
+                "📦 Stacked Bar (Composantes)",
+                "📈 Lignes (Comparaison Composantes)"
+            ])
+            
+            with tab_score_global:
+                # ✅ NOUVEAU GRAPHIQUE D'ÉVOLUTION DU SCORE GLOBAL
+                fig_score_evolution = create_score_evolution_chart(df_historical_kpi, commune_selectionnee)
+                
+                if fig_score_evolution:
+                    st.plotly_chart(fig_score_evolution, use_container_width=True, key="score_global_chart")
+            
+            with tab_score_stacked:
+                st.markdown("**Visualisation en barres empilées**")
+                st.markdown("*Chaque couleur représente la contribution d'une composante au score total*")
+                
+                fig_stacked = create_score_evolution_stacked_bar(df_historical_kpi, commune_selectionnee)
+                if fig_stacked:
+                    st.plotly_chart(fig_stacked, use_container_width=True, key="score_stacked_chart")
+                    
+                    st.info("""
+                    📌 **Interprétation** :
+                    - La hauteur totale de la barre = Score global (/100)
+                    - Chaque segment = Contribution d'une composante
+                    - **TEB (bleu)** : Capacité à dégager de l'épargne
+                    - **Annuité/CAF (orange)** : Part des dettes dans les recettes
+                    - **CD (vert)** : Temps pour rembourser la dette
+                    - **FDR (rouge)** : Liquidité et jours de fonctionnement
+                    """)
+            
+            with tab_score_lines:
+                st.markdown("**Visualisation en lignes**")
+                st.markdown("*La ligne noire épaisse = Score global | Les lignes pointillées = Santé de chaque composante (0-100%)*")
+                
+                fig_lines = create_score_evolution_lines(df_historical_kpi, commune_selectionnee)
+                if fig_lines:
+                    st.plotly_chart(fig_lines, use_container_width=True, key="score_lines_chart")
+                    
+                    st.info("""
+                    📌 **Interprétation** :
+                    - **Ligne noire épaisse** : Score global de la commune (/100)
+                    - **Lignes pointillées** : "Santé" de chaque composante (0 = mauvais, 100 = excellent)
+                    - Permet de voir LEQUEL des 4 critères tire le score vers le bas ou vers le haut
+                    - Zones colorées : Vert (bon), Orange (vigilance), Rouge (critique)
+                    """)
+            
+            # === MÉTRIQUES D'ÉVOLUTION ===
             st.markdown("---")
-            st.subheader(f"📊 Évolution pluriannuelle : {commune_selectionnee}")
-            st.markdown("*Comparaison avec la moyenne de la strate officielle (2019-2024)*")
+            col1, col2, col3, col4 = st.columns(4)
             
-            with st.spinner("Chargement des données historiques..."):
-                df_historical = fetch_historical_commune_data(commune_selectionnee, dept_selection)
-            
-            if not df_historical.empty and len(df_historical) > 1:
-                df_historical_kpi = calculate_historical_kpis(df_historical)
+            if len(df_historical_kpi) >= 2:
+                evolution_teb = df_historical_kpi.iloc[-1]['TEB Commune (%)'] - df_historical_kpi.iloc[0]['TEB Commune (%)']
+                evolution_cd = df_historical_kpi.iloc[-1]['Années de Désendettement'] - df_historical_kpi.iloc[0]['Années de Désendettement']
+                evolution_annuite = df_historical_kpi.iloc[-1]['Annuité/CAF Commune (%)'] - df_historical_kpi.iloc[0]['Annuité/CAF Commune (%)']
                 
-                col1, col2, col3, col4 = st.columns(4)
+                # Évolution du score
+                evolution_score = df_historical_kpi.iloc[-1]['Score Commune'] - df_historical_kpi.iloc[0]['Score Commune']
                 
-                if len(df_historical_kpi) >= 2:
-                    evolution_teb = df_historical_kpi.iloc[-1]['TEB Commune (%)'] - df_historical_kpi.iloc[0]['TEB Commune (%)']
-                    evolution_cd = df_historical_kpi.iloc[-1]['CD Commune (années)'] - df_historical_kpi.iloc[0]['CD Commune (années)']
-                    evolution_annuite = df_historical_kpi.iloc[-1]['Annuité/CAF Commune (%)'] - df_historical_kpi.iloc[0]['Annuité/CAF Commune (%)']
-                    
-                    if pd.notna(df_historical_kpi.iloc[-1].get('FDR Jours Commune')) and pd.notna(df_historical_kpi.iloc[0].get('FDR Jours Commune')):
-                        evolution_fdr = df_historical_kpi.iloc[-1]['FDR Jours Commune'] - df_historical_kpi.iloc[0]['FDR Jours Commune']
-                    else:
-                        evolution_fdr = None
-                    
-                    with col1:
-                        delta_color = "normal" if evolution_teb >= 0 else "inverse"
-                        st.metric("📈 Évolution TEB", f"{evolution_teb:+.1f}%", delta=f"{evolution_teb:+.1f}pp", delta_color=delta_color)
-                    
-                    with col2:
-                        delta_color = "inverse" if evolution_cd >= 0 else "normal"
-                        st.metric("⏳ Évolution CD", f"{evolution_cd:+.1f} ans", delta=f"{evolution_cd:+.1f} ans", delta_color=delta_color)
-                    
-                    with col3:
-                        delta_color = "inverse" if evolution_annuite >= 0 else "normal"
-                        st.metric("💳 Évolution Annuité/CAF", f"{evolution_annuite:+.1f}%", delta=f"{evolution_annuite:+.1f}pp", delta_color=delta_color)
-                    
-                    with col4:
-                        if evolution_fdr is not None:
-                            delta_color = "normal" if evolution_fdr >= 0 else "inverse"
-                            st.metric("💰 Évolution FDR", f"{evolution_fdr:+.0f}j", delta=f"{evolution_fdr:+.0f} jours", delta_color=delta_color)
-                        else:
-                            st.metric("💰 Évolution FDR", "N/A", delta="Données insuffisantes")
-                
-                # Création des graphiques d'évolution
-                fig_teb, fig_cd, fig_annuite, fig_fdr = create_evolution_charts(df_historical_kpi, commune_selectionnee)
-                
-                # Affichage des graphiques d'évolution
-                col1, col2 = st.columns(2)
+                if pd.notna(df_historical_kpi.iloc[-1].get('FDR Jours Commune')) and pd.notna(df_historical_kpi.iloc[0].get('FDR Jours Commune')):
+                    evolution_fdr = df_historical_kpi.iloc[-1]['FDR Jours Commune'] - df_historical_kpi.iloc[0]['FDR Jours Commune']
+                else:
+                    evolution_fdr = None
                 
                 with col1:
-                    if fig_teb:
-                        st.plotly_chart(fig_teb, use_container_width=True)
-                    if fig_annuite:
-                        st.plotly_chart(fig_annuite, use_container_width=True)
+                    delta_color = "normal" if evolution_score >= 0 else "inverse"
+                    st.metric("🎯 Évolution Score", f"{evolution_score:+.1f} pts", 
+                             delta=f"{evolution_score:+.1f} pts", delta_color=delta_color)
                 
                 with col2:
-                    if fig_cd:
-                        st.plotly_chart(fig_cd, use_container_width=True)
-                    if fig_fdr:
-                        st.plotly_chart(fig_fdr, use_container_width=True)
+                    delta_color = "normal" if evolution_teb >= 0 else "inverse"
+                    st.metric("📈 Évolution TEB", f"{evolution_teb:+.1f}%", 
+                             delta=f"{evolution_teb:+.1f}pp", delta_color=delta_color)
                 
-                # Tableau récapitulatif de l'évolution
-                st.subheader("📋 Tableau récapitulatif pluriannuel")
+                with col3:
+                    delta_color = "inverse" if evolution_cd >= 0 else "normal"
+                    st.metric("⏳ Évolution CD", f"{evolution_cd:+.1f} ans", 
+                             delta=f"{evolution_cd:+.1f} ans", delta_color=delta_color)
                 
-                colonnes_evolution = [
-                    'Année', 'Population', 
-                    'TEB Commune (%)', 'TEB Strate (%)',
-                    'CD Commune (années)', 'CD Strate (années)', 
-                    'Annuité/CAF Commune (%)', 'Annuité/CAF Strate (%)',
-                    'FDR Jours Commune', 'FDR Jours Moyenne'
-                ]
-                
-                # Vérifier quelles colonnes existent
-                colonnes_disponibles = [col for col in colonnes_evolution if col in df_historical_kpi.columns]
-                
-                df_display = df_historical_kpi[colonnes_disponibles].round(2)
-                
-                # Style conditionnel
-                def highlight_evolution(s):
-                    if s.name in ['TEB Commune (%)', 'TEB Strate (%)']:
-                        return ['background-color: lightgreen' if x >= 15 else 'background-color: lightyellow' if x >= 10 else 'background-color: lightcoral' for x in s]
-                    elif s.name in ['CD Commune (années)', 'CD Strate (années)']:
-                        return ['background-color: lightcoral' if x > 12 else 'background-color: lightyellow' if x > 8 else 'background-color: lightgreen' for x in s]
-                    elif s.name in ['Annuité/CAF Commune (%)', 'Annuité/CAF Strate (%)']:
-                        return ['background-color: lightcoral' if x > 60 else 'background-color: lightyellow' if x > 50 else 'background-color: lightgreen' for x in s]
-                    elif s.name in ['FDR Jours Commune', 'FDR Jours Moyenne']:
-                        return ['background-color: lightgreen' if x > 240 else 'background-color: lightyellow' if x >= 60 else 'background-color: lightcoral' for x in s]
-                    return ['' for x in s]
-                
-                styled_evolution = df_display.style.apply(highlight_evolution)
-                st.dataframe(styled_evolution, use_container_width=True)
-                
-            else:
-                st.warning(f"⚠️ Données historiques insuffisantes pour {commune_selectionnee} (moins de 2 années disponibles)")
-                st.info("💡 L'analyse pluriannuelle nécessite au moins 2 années de données consécutives")
-        
+                with col4:
+                    delta_color = "inverse" if evolution_annuite >= 0 else "normal"
+                    st.metric("💳 Évolution Annuité/CAF", f"{evolution_annuite:+.1f}%", 
+                             delta=f"{evolution_annuite:+.1f}pp", delta_color=delta_color)
+            
+            # === AUTRES GRAPHIQUES KPI ===
+            st.markdown("---")
+            st.subheader("📊 Évolution des indicateurs individuels")
+            
+            # Création des graphiques d'évolution
+            fig_teb, fig_cd, fig_annuite, fig_fdr = create_evolution_charts(df_historical_kpi, commune_selectionnee)
+            
+            # Affichage des graphiques d'évolution
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if fig_teb:
+                    st.plotly_chart(fig_teb, use_container_width=True, key="evolution_teb_chart")
+                if fig_annuite:
+                    st.plotly_chart(fig_annuite, use_container_width=True, key="evolution_annuite_chart")
+            
+            with col2:
+                if fig_cd:
+                    st.plotly_chart(fig_cd, use_container_width=True, key="evolution_cd_chart")
+                if fig_fdr:
+                    st.plotly_chart(fig_fdr, use_container_width=True, key="evolution_fdr_chart")
+            
+            # === TABLEAU RÉCAPITULATIF ===
+            st.markdown("---")
+            st.subheader("📋 Tableau récapitulatif pluriannuel")
+            
+            colonnes_evolution = [
+                'Année', 'Population', 
+                'Score Commune',
+                'TEB Commune (%)', 'TEB Strate (%)',
+                'Années de Désendettement', 'CD Strate (années)', 
+                'Annuité/CAF Commune (%)', 'Annuité/CAF Strate (%)',
+                'FDR Jours Commune', 'FDR Jours Moyenne'
+            ]
+            
+            # Vérifier quelles colonnes existent
+            colonnes_disponibles = [col for col in colonnes_evolution if col in df_historical_kpi.columns]
+            
+            df_display = df_historical_kpi[colonnes_disponibles].round(2)
+            
+            # Style conditionnel
+            def highlight_evolution(s):
+                if s.name in ['TEB Commune (%)', 'TEB Strate (%)']:
+                    return ['background-color: lightgreen' if x >= 20 else 'background-color: lightyellow' if x >= 10 else 'background-color: lightcoral' for x in s]
+                elif s.name in ['Années de Désendettement', 'CD Strate (années)']:
+                    return ['background-color: lightcoral' if x > 16 else 'background-color: lightyellow' if x > 6 else 'background-color: lightgreen' for x in s]
+                elif s.name in ['Annuité/CAF Commune (%)', 'Annuité/CAF Strate (%)']:
+                    return ['background-color: lightcoral' if x > 50 else 'background-color: lightyellow' if x > 30 else 'background-color: lightgreen' for x in s]
+                elif s.name in ['FDR Jours Commune', 'FDR Jours Moyenne']:
+                    return ['background-color: lightgreen' if x > 240 else 'background-color: lightyellow' if x >= 70 else 'background-color: lightcoral' for x in s]
+                elif s.name == 'Score Commune':
+                    return ['background-color: lightgreen' if x >= 75 else 'background-color: lightyellow' if x >= 50 else 'background-color: lightcoral' for x in s]
+                return ['' for x in s]
+            
+            styled_evolution = df_display.style.apply(highlight_evolution)
+            st.dataframe(styled_evolution, use_container_width=True)
+            
+        else:
+            st.warning(f"⚠️ Données historiques insuffisantes pour {commune_selectionnee} (moins de 2 années disponibles)")
+            st.info("💡 L'analyse pluriannuelle nécessite au moins 2 années de données consécutives")
         # === TABLEAUX DÉTAILLÉS ===
         st.markdown("---")
         
