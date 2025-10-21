@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 import requests
@@ -14,6 +15,18 @@ import re
 from functools import lru_cache
 from difflib import SequenceMatcher
 from datetime import datetime
+from functools import lru_cache
+from difflib import SequenceMatcher
+from datetime import datetime
+# ✅ IMPORT CORRIGÉ AVEC ALIAS
+import plotly.io as pio
+from reportlab.lib.pagesizes import A4, letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm, inch
+from reportlab.platypus import (
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak, KeepTogether
+)
+from reportlab.lib import colors as rl_colors  # ✅ ALIAS ICI
 
 # Configuration de la page
 st.set_page_config(
@@ -926,7 +939,73 @@ def create_score_evolution_lines(df_historical_kpi, commune_name):
     
     return fig
 
-
+def enhance_figure_quality(fig):
+    """Améliore la qualité visuelle d'une figure Plotly - Légende en bas"""
+    fig.update_layout(
+        # Fond blanc propre
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        
+        # Polices plus lisibles
+        font=dict(
+            family='Arial, sans-serif',
+            size=11,
+            color='#1a1a1a'
+        ),
+        
+        # Grille améliorée
+        xaxis=dict(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='rgba(200, 200, 200, 0.3)',
+            showline=True,
+            linewidth=1.5,
+            linecolor='#333333'
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='rgba(200, 200, 200, 0.3)',
+            showline=True,
+            linewidth=1.5,
+            linecolor='#333333'
+        ),
+        
+        # Légende EN BAS - CENTREE
+        legend=dict(
+            orientation='h',
+            yanchor='top',
+            y=-0.15,
+            xanchor='center',
+            x=0.5,
+            bgcolor='rgba(255, 255, 255, 0.9)',
+            bordercolor='#333333',
+            borderwidth=1,
+            font=dict(size=10)
+        ),
+        
+        # Marges (augmentées en bas pour la légende)
+        margin=dict(l=70, r=50, t=80, b=120),
+        
+        # Hover info
+        hovermode='x unified'
+    )
+    
+    # Améliorer les traces selon leur type
+    for trace in fig.data:
+        if trace.type in ['scatter', 'scatterpolar']:
+            # Pour les lignes et scatter
+            trace.update(
+                line=dict(width=2.5),
+                marker=dict(size=8)
+            )
+        elif trace.type == 'bar':
+            # Pour les barres
+            trace.update(
+                marker=dict(line=dict(width=1, color='white'))
+            )
+    
+    return fig
 # === NOUVEAU SYSTÈME DE SCORING V3 (AFFINÉ) ===
 def score_sante_financiere_v3(row, df_ref):
     """
@@ -1260,6 +1339,934 @@ def create_population_brackets(df):
                                bins=[0, 500, 2000, 10000, float('inf')],
                                labels=['< 500 hab', '500-2000 hab', '2000-10000 hab', '> 10000 hab'])
     return df
+
+# ============================================================
+# SECTION À INTÉGRER DANS CLAUDE.PY
+# Placer APRÈS la fonction create_tableau_normalisation()
+# et AVANT "=== RÉCUPÉRATION ET TRAITEMENT DES DONNÉES ==="
+# ============================================================
+
+# ✅ IMPORTER PLOTLY GRAPH OBJECTS (vérifier qu'il n'est pas déjà importé)
+import plotly.graph_objects as go
+
+# ============================================================
+# COPIER/COLLER TOUT CECI : enhanced_pdf_export.py (COMPLÈTE)
+# ============================================================
+
+import plotly.io as pio
+from reportlab.lib.pagesizes import A4, letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm, inch
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak, KeepTogether
+from reportlab.lib import colors
+
+def add_header_footer(canvas, doc):
+    """Ajoute en-tête et pied de page à chaque page"""
+    canvas.saveState()
+    
+    canvas.setFont("Helvetica", 8)
+    canvas.drawString(1*cm, A4[1] - 0.7*cm, "Analyse Financière des Communes - SFP COLLECTIVITÉS")
+    canvas.drawString(1*cm, 0.5*cm, f"Page {doc.page}")
+    canvas.drawRightString(A4[0] - 1*cm, 0.5*cm, datetime.now().strftime('%d/%m/%Y'))
+    
+    canvas.setStrokeColor(rl_colors.HexColor('#1f77b4'))
+    canvas.setLineWidth(0.5)
+    canvas.line(1*cm, A4[1] - 0.9*cm, A4[0] - 1*cm, A4[1] - 0.9*cm)
+    canvas.line(1*cm, 0.7*cm, A4[0] - 1*cm, 0.7*cm)
+    
+    canvas.restoreState()
+
+def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, commune_name, dept_selection, annee_selection, df_filtered):
+    """
+    Exporte un PDF professionnel avec :
+    1. Page de garde
+    2. ANALYSE DÉTAILLÉE (année actuelle)
+    4. Évolution pluriannuelle
+    5. Conclusions
+    """
+    
+    try:
+        # === ÉTAPE 1 : Générer les graphiques en PNG ===
+        temp_images = []
+        
+        # Radar plot (analyse détaillée)
+        fig_radar = create_radar_plot_for_pdf(commune_data, df_filtered)
+        if fig_radar:
+            fig_radar = enhance_figure_quality(fig_radar)
+            temp_img_radar = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            pio.write_image(fig_radar, temp_img_radar.name, width=1200, height=1200, scale=2)
+            temp_images.append(('radar', temp_img_radar.name))
+        
+        # Score global
+        fig_score = create_score_evolution_chart(df_historical_kpi, commune_name)
+        if fig_score:
+            fig_score = enhance_figure_quality(fig_score)
+            temp_img1 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            pio.write_image(fig_score, temp_img1.name, width=1400, height=700,scale=2)
+            temp_images.append(('score', temp_img1.name))
+        
+        # Stacked bar
+        fig_stacked = create_score_evolution_stacked_bar(df_historical_kpi, commune_name)
+        if fig_stacked:
+            fig_stacked = enhance_figure_quality(fig_stacked)
+            temp_img2 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            pio.write_image(fig_stacked, temp_img2.name, width=1400, height=700, scale=2)
+            temp_images.append(('stacked', temp_img2.name))
+        
+        # Lignes
+        fig_lines = create_score_evolution_lines(df_historical_kpi, commune_name)
+        if fig_lines:
+            fig_lines = enhance_figure_quality(fig_lines)
+            temp_img3 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            pio.write_image(fig_lines, temp_img3.name, width=1400, height=800, scale =2)
+            temp_images.append(('lines', temp_img3.name))
+        
+        # ✨ AJOUTER LES 4 GRAPHIQUES INDIVIDUELS
+        fig_teb, fig_cd, fig_annuite, fig_fdr = create_evolution_charts(df_historical_kpi, commune_name)
+
+        if fig_teb:
+            fig_teb = enhance_figure_quality(fig_teb)
+            temp_img_teb = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            pio.write_image(fig_teb, temp_img_teb.name, width=1400, height=700, scale=2)
+            temp_images.append(('teb_ind', temp_img_teb.name))
+
+        if fig_cd:
+            fig_cd = enhance_figure_quality(fig_cd)
+            temp_img_cd = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            pio.write_image(fig_cd, temp_img_cd.name, width=1400, height=700, scale = 2)
+            temp_images.append(('cd_ind', temp_img_cd.name))
+
+        if fig_annuite:
+            fig_annuite = enhance_figure_quality(fig_annuite)
+            temp_img_annuite = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            pio.write_image(fig_annuite, temp_img_annuite.name, width=1400, height=700, scale = 2)
+            temp_images.append(('annuite_ind', temp_img_annuite.name))
+
+        if fig_fdr:
+            fig_fdr = enhance_figure_quality(fig_fdr)
+            temp_img_fdr = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            pio.write_image(fig_fdr, temp_img_fdr.name, width=1400, height=700, scale = 2)
+            temp_images.append(('fdr_ind', temp_img_fdr.name))
+
+        from io import BytesIO
+        from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY   
+
+         # === CREATION PDF ===
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            rightMargin=2*cm,
+            leftMargin=2*cm,
+            topMargin=2*cm,
+            bottomMargin=2*cm
+        )
+        
+        styles = getSampleStyleSheet()
+        
+        # === STYLES ===
+        style_titre = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontName='Helvetica-Bold',
+            fontSize=32,
+            textColor=rl_colors.HexColor('#1a1a1a'),
+            spaceAfter=10,
+            alignment=TA_CENTER,
+            leading=38
+        )
+        
+        style_titre_light = ParagraphStyle(
+            'CustomTitleLight',
+            parent=styles['Heading1'],
+            fontName='Helvetica',
+            fontSize=32,
+            textColor=rl_colors.HexColor('#1a1a1a'),
+            spaceAfter=30,
+            alignment=TA_CENTER,
+            leading=38
+        )
+        
+        style_sous_titre = ParagraphStyle(
+            'SubTitle',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=10,
+            textColor=rl_colors.HexColor('#666666'),
+            spaceAfter=50,
+            alignment=TA_CENTER,
+            letterSpacing=2
+        )
+        
+        style_section = ParagraphStyle(
+            'Section',
+            parent=styles['Heading2'],
+            fontName='Helvetica-Bold',
+            fontSize=14,
+            textColor=rl_colors.HexColor('#1a1a1a'),
+            spaceAfter=20,
+            spaceBefore=30
+        )
+        
+        style_body = ParagraphStyle(
+            'BodyText',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=10,
+            textColor=rl_colors.HexColor('#333333'),
+            spaceAfter=12,
+            leading=14,
+            alignment=TA_JUSTIFY
+        )
+        
+        story = []
+        
+        # ========================================
+        # PAGE 1 : COUVERTURE
+        # ========================================
+        
+        story.append(Spacer(1, 4*cm))
+        story.append(Paragraph("<b>SANTE FINANCIERE</b>", style_titre_light))
+        story.append(Paragraph("DES COMMUNES", style_titre))
+        story.append(Spacer(1, 0.5*cm))
+        story.append(Paragraph("RAPPORT D'ANALYSE FINANCIERE - SCORING V3", style_sous_titre))
+        
+        story.append(Spacer(1, 2*cm))
+        story.append(Paragraph(f"<b>{commune_name.upper()}</b>", ParagraphStyle(
+            'Commune',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=24,
+            textColor=rl_colors.HexColor('#1a1a1a'),
+            alignment=TA_CENTER,
+            spaceAfter=10
+        )))
+        
+        story.append(Paragraph(f"Departement {dept_selection}", ParagraphStyle(
+            'Dept',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=12,
+            textColor=rl_colors.HexColor('#666666'),
+            alignment=TA_CENTER,
+            spaceAfter=10
+        )))
+        
+        story.append(Paragraph(f"Année {annee_selection}", ParagraphStyle(
+            'Année',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=12,
+            textColor=rl_colors.HexColor('#666666'),
+            alignment=TA_CENTER,
+            spaceAfter=60
+        )))
+        
+        # Score box
+        status_color = '#51CF66' if commune_data['Score'] >= 75 else '#FFB84D' if commune_data['Score'] >= 50 else '#FF6B6B'
+        status_label = 'SAIN' if commune_data['Score'] >= 75 else 'A SURVEILLER' if commune_data['Score'] >= 50 else 'FRAGILE'
+        
+        score_data = [
+            [Paragraph(f"<b>SCORE DE SANTE</b>", ParagraphStyle(
+                'ScoreLabel',
+                parent=styles['Normal'],
+                fontName='Helvetica-Bold',
+                fontSize=10,
+                textColor=rl_colors.HexColor('#666666'),
+                alignment=TA_CENTER,
+                letterSpacing=1
+            ))],
+            [Paragraph(f"<b>{commune_data['Score']:.1f}/100</b>", ParagraphStyle(
+                'ScoreValue',
+                parent=styles['Normal'],
+                fontName='Helvetica-Bold',
+                fontSize=48,
+                textColor=rl_colors.HexColor(status_color),
+                alignment=TA_CENTER
+            ))],
+            [Paragraph(f"<b>{status_label}</b>", ParagraphStyle(
+                'ScoreStatus',
+                parent=styles['Normal'],
+                fontName='Helvetica-Bold',
+                fontSize=10,
+                textColor=rl_colors.HexColor('#666666'),
+                alignment=TA_CENTER,
+                letterSpacing=1
+            ))]
+        ]
+        
+        score_table = Table(score_data, colWidths=[12*cm])
+        score_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOX', (0, 0), (-1, -1), 2, rl_colors.HexColor(status_color)),
+            ('TOPPADDING', (0, 0), (-1, -1), 20),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 20),
+        ]))
+        
+        story.append(score_table)
+        story.append(Spacer(1, 2*cm))
+        
+        date_rapport = datetime.now().strftime("%d/%m/%Y")
+        story.append(Paragraph(f"Rapport genere le {date_rapport}", ParagraphStyle(
+            'Date',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=9,
+            textColor=rl_colors.HexColor('#999999'),
+            alignment=TA_CENTER
+        )))
+        
+        story.append(PageBreak())
+        
+        # ========================================
+        # PAGE 2 : SYNTHESE EXECUTIVE
+        # ========================================
+        
+        story.append(Paragraph("SYNTHESE EXECUTIVE", style_section))
+        story.append(Spacer(1, 0.5*cm))
+        
+        # Intro
+        teb = commune_data['TEB (%)']
+        cd = commune_data.get('Années de Désendettement', 0)
+        
+        if teb > 20 and cd < 6:
+            intro = "Situation financiere saine : la commune dispose d'une epargne robuste et d'une capacite de desendettement maaitrisee."
+        elif teb > 15 and cd < 8:
+            intro = "Situation financiere acceptable : les indicateurs sont globalement dans les normes de la strate officielle."
+        elif teb < 10 or cd > 12:
+            intro = "Situation financiere fragile : attention requise sur l'epargne brute et/ou la capacite de desendettement."
+        else:
+            intro = "Situation financiere mitigee : certains indicateurs demandent une surveillance particuliere."
+        
+        story.append(Paragraph(intro, ParagraphStyle(
+            'Intro',
+            parent=style_body,
+            fontName='Helvetica-Bold',
+            fontSize=11,
+            textColor=rl_colors.HexColor('#1a1a1a'),
+            spaceAfter=15
+        )))
+        
+        story.append(Spacer(1, 0.3*cm))
+        
+        # Insights / Forces
+        insights = []
+        
+        if teb > 15:
+            insights.append({
+                'icon': '✓',
+                'text': f'<b>Epargne robuste :</b> TEB de {teb:.1f}% indique une bonne capacite d\'epargne brute.'
+            })
+        if cd < 8:
+            insights.append({
+                'icon': '✓',
+                'text': f'<b>Desendettement maitrise :</b> Capacite de {cd:.1f} ans, en dessous du seuil critique.'
+            })
+        if commune_data.get('FDR Jours Commune', 0) > 240:
+            insights.append({
+                'icon': '✓',
+                'text': f'<b>Tresorerie saine :</b> FDR de {commune_data.get("FDR Jours Commune", 0):.0f} jours assure une liquidite suffisante.'
+            })
+        
+        if not insights:
+            insights.append({
+                'icon': '!',
+                'text': '<b>Points a surveiller :</b> Certains indicateurs necessitent une attention particuliere.'
+            })
+        
+        for insight in insights[:3]:
+            insight_data = [[
+                Paragraph(f"{insight['icon']}", ParagraphStyle(
+                    'Icon',
+                    parent=styles['Normal'],
+                    fontName='Helvetica-Bold',
+                    fontSize=20,
+                    alignment=TA_CENTER,
+                    textColor=rl_colors.HexColor(status_color)
+                )),
+                Paragraph(insight['text'], style_body)
+            ]]
+            
+            insight_table = Table(insight_data, colWidths=[1.5*cm, 14*cm])
+            insight_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('BACKGROUND', (0, 0), (-1, -1), rl_colors.HexColor('#f5f5f5')),
+                ('LEFTPADDING', (0, 0), (-1, -1), 15),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 15),
+                ('TOPPADDING', (0, 0), (-1, -1), 15),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 15),
+            ]))
+            
+            story.append(insight_table)
+            story.append(Spacer(1, 0.4*cm))
+        
+        story.append(Spacer(1, 0.5*cm))
+        
+        # PRIORITES
+        story.append(Paragraph("PRIORITES D'ACTION", style_section))
+        story.append(Spacer(1, 0.3*cm))
+        
+        priorites = []
+        if teb < 10:
+            priorites.append("Renforcer la generation d'epargne brute")
+        if cd > 12:
+            priorites.append("Piloter activement l'endettement")
+        if commune_data.get('FDR Jours Commune', 0) < 60:
+            priorites.append("Ameliorer la gestion de la tresorerie")
+        if commune_data.get('Annuite / CAF (%)', 0) > 60:
+            priorites.append("Reduire le ratio d'annuite par rapport a la CAF")
+        
+        if not priorites:
+            priorites.append("Maintenir la stabilite financiere actuelle")
+            priorites.append("Continuer le suivi regulier des indicateurs")
+        
+        for i, priorite in enumerate(priorites, 1):
+            priorite_text = f"<b>{i}.</b> {priorite}"
+            story.append(Paragraph(priorite_text, style_body))
+            story.append(Spacer(1, 0.3*cm))
+        
+        story.append(PageBreak())
+        
+        # ========================================
+        # PAGE 3 : INDICATEURS CLES
+        # ========================================
+        
+        story.append(Paragraph("INDICATEURS CLES - ANNEE EN COURS", style_section))
+        story.append(Spacer(1, 0.5*cm))
+        
+        kpi_data = [
+            ['INDICATEUR', 'COMMUNE', 'STRATE', 'SEUIL BON', 'STATUT'],
+            [
+                'TEB (%)',
+                f"{commune_data['TEB (%)']:.1f}%",
+                f"{commune_data.get('TEB - Moy. strate (%)', 0):.1f}%",
+                '>15%',
+                'BON' if commune_data['TEB (%)'] > 15 else 'A SURVEILLER'
+            ],
+            [
+                'CD (ans)',
+                f"{commune_data.get('Années de Désendettement', 0):.1f}",
+                f"{commune_data.get('CD - Moy. strate (années)', 0):.1f}",
+                '<8',
+                'BON' if commune_data.get('Années de Désendettement', 0) < 8 else 'A SURVEILLER'
+            ],
+            [
+                'Annuite/CAF (%)',
+                f"{commune_data.get('Annuité / CAF (%)', 0):.1f}%",
+                f"{commune_data.get('Annuité/CAF - Moy. strate (%)', 0):.1f}%",
+                '<50%',
+                'BON' if commune_data.get('Annuité / CAF (%)', 0) < 50 else 'A SURVEILLER'
+            ],
+            [
+                'FDR (j)',
+                f"{commune_data.get('FDR Jours Commune', 0):.0f}",
+                f"{commune_data.get('FDR Jours Moyenne', 0):.0f}",
+                '>240',
+                'BON' if commune_data.get('FDR Jours Commune', 0) > 240 else 'A SURVEILLER'
+            ]
+        ]
+        
+        kpi_table = Table(kpi_data, colWidths=[3.5*cm, 3.2*cm, 3.2*cm, 3*cm, 3*cm])
+        kpi_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), rl_colors.HexColor('#1a1a1a')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), rl_colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('TOPPADDING', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 10),
+            ('TOPPADDING', (0, 1), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 0.5, rl_colors.HexColor('#e8e8e8')),
+            ('LINEBELOW', (0, 0), (-1, 0), 2, rl_colors.HexColor('#1a1a1a')),
+        ]))
+        
+        story.append(kpi_table)
+        story.append(Spacer(1, 1*cm))
+        
+        story.append(PageBreak())
+        
+        # ========================================
+        # PAGE 4 : PROFIL FINANCIER (RADAR)
+        # ========================================
+        
+        story.append(Paragraph("PROFIL FINANCIER", style_section))
+        story.append(Spacer(1, 0.3*cm))
+        
+        story.append(Paragraph(
+            "Le radar ci-dessous positionne la commune par rapport a sa strate officielle. "
+            "Plus la forme s'etend vers l'exterieur, mieux c'est.",
+            style_body
+        ))
+        story.append(Spacer(1, 0.3*cm))
+        
+        radar_img = [x[1] for x in temp_images if x[0] == 'radar']
+        if radar_img and os.path.exists(radar_img[0]):
+            img = Image(radar_img[0], width=15*cm, height=11*cm)
+            story.append(img)
+        
+                # ===== TABLEAU DETAIL NORMALISATION =====
+        story.append(Paragraph("Detail de la Normalisation", ParagraphStyle(
+            'SubSection',
+            parent=styles['Heading3'],
+            fontName='Helvetica-Bold',
+            fontSize=11,
+            textColor=rl_colors.HexColor('#1a1a1a'),
+            spaceAfter=10
+        )))
+        
+        story.append(Paragraph(
+            "Le tableau ci-dessous montre comment chaque indicateur brut est transforme en echelle 0-100 "
+            "pour le radar. Cela permet une comparaison homogene sur le meme graphique.",
+            ParagraphStyle(
+                'Explanation',
+                parent=styles['Normal'],
+                fontName='Helvetica-Oblique',
+                fontSize=9,
+                textColor=rl_colors.HexColor('#666666'),
+                spaceAfter=10
+            )
+        ))
+        
+        story.append(Spacer(1, 0.2*cm))
+        
+        # Calculer les valeurs normalisees
+        norms = normaliser_indicateurs_pour_radar(commune_data)
+        
+        # Tableau normalisation
+        norm_data = [
+            ['CRITERE', 'VALEUR BRUTE', 'PLAGE', 'NORMALISE (0-100)', 'INTERPRETATION'],
+            [
+                'TEB (%)',
+                f"{commune_data['TEB (%)']:.1f}%",
+                '0-30%',
+                f"{norms['TEB_norm']:.1f}",
+                'Bon' if norms['TEB_norm'] > 50 else 'A surveiller' if norms['TEB_norm'] > 25 else 'Faible'
+            ],
+            [
+                'Annees Desendettement',
+                f"{commune_data.get('Annees de Desendettement', 0):.1f} ans",
+                '0-15 ans (inversee)',
+                f"{norms['CD_norm']:.1f}",
+                'Bon' if norms['CD_norm'] > 50 else 'A surveiller' if norms['CD_norm'] > 25 else 'Eleve'
+            ],
+            [
+                'Annuité/CAF (%)',
+                f"{commune_data.get('Annuite / CAF (%)', 0):.1f}%",
+                '0-80% (inversee)',
+                f"{norms['Annuité_CAF_norm']:.1f}",
+                'Bon' if norms['Annuité_CAF_norm'] > 50 else 'A surveiller' if norms['Annuité_CAF_norm'] > 25 else 'Critique'
+            ],
+            [
+                'FDR (jours)',
+                f"{commune_data.get('FDR Jours Commune', 0):.0f}j",
+                '0-300j',
+                f"{norms['FDR_norm']:.1f}",
+                'Bon' if norms['FDR_norm'] > 80 else 'Acceptable' if norms['FDR_norm'] > 40 else 'Critique'
+            ],
+            [
+                'Rigidité (%)',
+                f"{commune_data['Rigidité (%)']:.1f}%",
+                '0-200% (inversee)',
+                f"{norms['Rigidité_norm']:.1f}",
+                'Bon' if norms['Rigidité_norm'] > 50 else 'A surveiller' if norms['Rigidité_norm'] > 25 else 'Eleve'
+            ]
+        ]
+        
+        norm_table = Table(norm_data, colWidths=[2.5*cm, 2.8*cm, 2.5*cm, 2.5*cm, 3*cm])
+        norm_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), rl_colors.HexColor('#1a1a1a')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), rl_colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, rl_colors.HexColor('#e8e8e8')),
+            ('LINEBELOW', (0, 0), (-1, 0), 2, rl_colors.HexColor('#1a1a1a')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [rl_colors.white, rl_colors.HexColor('#fafafa')])
+        ]))
+        
+        story.append(norm_table)
+        
+        story.append(Spacer(1, 0.4*cm))
+        
+        story.append(Paragraph(
+            "<b>Note :</b> Les valeurs inversees (CD, Annuite/CAF, Rigidite) signifient que plus la valeur brute est basse, "
+            "mieux c'est. La normalisation permet de les ramener a une echelle commune avec les autres indicateurs.",
+            ParagraphStyle(
+                'Note',
+                parent=styles['Normal'],
+                fontName='Helvetica-Oblique',
+                fontSize=8,
+                textColor=rl_colors.HexColor('#999999'),
+                spaceAfter=10
+            )
+        ))
+        
+        story.append(PageBreak())
+
+        
+# ========================================
+        # PAGE 5 : EVOLUTION PLURIANNUELLE
+        # ========================================
+        
+        story.append(Paragraph("EVOLUTION PLURIANNUELLE (2019-2024)", style_section))
+        story.append(Spacer(1, 0.3*cm))
+        
+        # Score evolution
+        score_img = [x[1] for x in temp_images if x[0] == 'score']
+        if score_img and os.path.exists(score_img[0]):
+            story.append(Paragraph("1. Evolution du Score Global", ParagraphStyle(
+                'SubSection',
+                parent=styles['Heading3'],
+                fontName='Helvetica-Bold',
+                fontSize=11,
+                textColor=rl_colors.HexColor('#1a1a1a'),
+                spaceAfter=10
+            )))
+            img = Image(score_img[0], width=16*cm, height=8*cm)
+            story.append(img)
+            story.append(Spacer(1, 0.5*cm))
+        
+        # Stacked
+        stacked_img = [x[1] for x in temp_images if x[0] == 'stacked']
+        if stacked_img and os.path.exists(stacked_img[0]):
+            story.append(Paragraph("2. Contribution des Composantes", ParagraphStyle(
+                'SubSection',
+                parent=styles['Heading3'],
+                fontName='Helvetica-Bold',
+                fontSize=11,
+                textColor=rl_colors.HexColor('#1a1a1a'),
+                spaceAfter=10
+            )))
+            img = Image(stacked_img[0], width=16*cm, height=8*cm)
+            story.append(img)
+            story.append(Spacer(1, 0.5*cm))
+            story.append(PageBreak())
+        
+        # Lines
+        lines_img = [x[1] for x in temp_images if x[0] == 'lines']
+        if lines_img and os.path.exists(lines_img[0]):
+            story.append(Paragraph("3. Evolution Detaillee par Composante", ParagraphStyle(
+                'SubSection',
+                parent=styles['Heading3'],
+                fontName='Helvetica-Bold',
+                fontSize=11,
+                textColor=rl_colors.HexColor('#1a1a1a'),
+                spaceAfter=10
+            )))
+            img = Image(lines_img[0], width=16*cm, height=8*cm)
+            story.append(img)
+            story.append(Spacer(1, 0.5*cm))
+        
+        story.append(PageBreak())
+        
+        # ========================================
+        # PAGE 6 : INDICATEURS INDIVIDUELS
+        # ========================================
+        
+        story.append(Paragraph("INDICATEURS INDIVIDUELS - EVOLUTION DETAILLEE", style_section))
+        story.append(Spacer(1, 0.3*cm))
+        
+        # TEB
+        teb_img = [x[1] for x in temp_images if x[0] == 'teb_ind']
+        if teb_img and os.path.exists(teb_img[0]):
+            story.append(Paragraph("TEB - Taux d'Epargne Brute", ParagraphStyle(
+                'SubSection',
+                parent=styles['Heading3'],
+                fontName='Helvetica-Bold',
+                fontSize=11,
+                textColor=rl_colors.HexColor('#1a1a1a'),
+                spaceAfter=8
+            )))
+            story.append(Paragraph(
+                "Mesure la capacite de la commune a degager de l'epargne. "
+                "Seuil vert : >15% | Seuil critique : <10%",
+                ParagraphStyle(
+                    'Explanation',
+                    parent=styles['Normal'],
+                    fontName='Helvetica-Oblique',
+                    fontSize=9,
+                    textColor=rl_colors.HexColor('#666666'),
+                    spaceAfter=10
+                )
+            ))
+            img = Image(teb_img[0], width=16*cm, height=8*cm)
+            story.append(img)
+            story.append(Spacer(1, 0.4*cm))
+        
+        # CD
+        cd_img = [x[1] for x in temp_images if x[0] == 'cd_ind']
+        if cd_img and os.path.exists(cd_img[0]):
+            story.append(Paragraph("CD - Capacite de Desendettement", ParagraphStyle(
+                'SubSection',
+                parent=styles['Heading3'],
+                fontName='Helvetica-Bold',
+                fontSize=11,
+                textColor=rl_colors.HexColor('#1a1a1a'),
+                spaceAfter=8
+            )))
+            story.append(Paragraph(
+                "Nombre d'annees necessaires pour rembourser la dette avec l'epargne. "
+                "Seuil vert : <8 ans | Seuil critique : >12 ans",
+                ParagraphStyle(
+                    'Explanation',
+                    parent=styles['Normal'],
+                    fontName='Helvetica-Oblique',
+                    fontSize=9,
+                    textColor=rl_colors.HexColor('#666666'),
+                    spaceAfter=10
+                )
+            ))
+            img = Image(cd_img[0], width=16*cm, height=8*cm)
+            story.append(img)
+            story.append(Spacer(1, 0.4*cm))
+        
+        story.append(PageBreak())
+        
+        # Annuité/CAF
+        annuite_img = [x[1] for x in temp_images if x[0] == 'annuite_ind']
+        if annuite_img and os.path.exists(annuite_img[0]):
+            story.append(Paragraph("Ratio Annuite / CAF Brute", ParagraphStyle(
+                'SubSection',
+                parent=styles['Heading3'],
+                fontName='Helvetica-Bold',
+                fontSize=11,
+                textColor=rl_colors.HexColor('#1a1a1a'),
+                spaceAfter=8
+            )))
+            story.append(Paragraph(
+                "Part des annuites (dettes) dans les recettes reelles de fonctionnement. "
+                "Seuil vert : <50% | Seuil critique : >60%",
+                ParagraphStyle(
+                    'Explanation',
+                    parent=styles['Normal'],
+                    fontName='Helvetica-Oblique',
+                    fontSize=9,
+                    textColor=rl_colors.HexColor('#666666'),
+                    spaceAfter=10
+                )
+            ))
+            img = Image(annuite_img[0], width=16*cm, height=8*cm)
+            story.append(img)
+            story.append(Spacer(1, 0.4*cm))
+        
+        # FDR
+        fdr_img = [x[1] for x in temp_images if x[0] == 'fdr_ind']
+        if fdr_img and os.path.exists(fdr_img[0]):
+            story.append(Paragraph("FDR - Fonds de Roulement", ParagraphStyle(
+                'SubSection',
+                parent=styles['Heading3'],
+                fontName='Helvetica-Bold',
+                fontSize=11,
+                textColor=rl_colors.HexColor('#1a1a1a'),
+                spaceAfter=8
+            )))
+            story.append(Paragraph(
+                "Nombre de jours de fonctionnement garantis par la tresorerie. "
+                "Seuil vert : >240 j | Seuil critique : <60 j",
+                ParagraphStyle(
+                    'Explanation',
+                    parent=styles['Normal'],
+                    fontName='Helvetica-Oblique',
+                    fontSize=9,
+                    textColor=rl_colors.HexColor('#666666'),
+                    spaceAfter=10
+                )
+            ))
+            img = Image(fdr_img[0], width=16*cm, height=8*cm)
+            story.append(img)
+            story.append(Spacer(1, 0.4*cm))
+        
+        story.append(PageBreak())
+        # ========================================
+        # PAGE 6 : TABLEAU EVOLUTION
+        # ========================================
+        
+        story.append(Paragraph("TABLEAU RECAPITULATIF", style_section))
+        story.append(Spacer(1, 0.5*cm))
+        
+        tableau_data = [['ANNEE', 'SCORE', 'TEB (%)', 'CD (ans)', 'ANNUITE/CAF (%)', 'FDR (j)']]
+        
+        for _, row in df_historical_kpi.iterrows():
+            tableau_data.append([
+                str(int(row['Année'])),
+                f"{row['Score Commune']:.1f}",
+                f"{row['TEB Commune (%)']:.1f}",
+                f"{row['Années de Désendettement']:.1f}",
+                f"{row['Annuité/CAF Commune (%)']:.1f}",
+                f"{row['FDR Jours Commune']:.0f}" if pd.notna(row.get('FDR Jours Commune')) else 'N/A'
+            ])
+        
+        evolution_table = Table(tableau_data, colWidths=[1.5*cm, 2*cm, 2*cm, 2*cm, 2.5*cm, 2*cm])
+        evolution_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), rl_colors.HexColor('#1a1a1a')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), rl_colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, rl_colors.HexColor('#e8e8e8')),
+            ('LINEBELOW', (0, 0), (-1, 0), 2, rl_colors.HexColor('#1a1a1a')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [rl_colors.white, rl_colors.HexColor('#fafafa')])
+        ]))
+        
+        story.append(evolution_table)
+        
+        # === BUILD PDF ===
+        doc.build(story)
+        
+        # Nettoyage
+        for _, img_path in temp_images:
+            try:
+                os.unlink(img_path)
+            except:
+                pass
+        
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        
+        return pdf_data
+    
+    except Exception as e:
+        st.error(f"Erreur lors de la generation du PDF : {e}")
+        import traceback
+        st.error(traceback.format_exc())
+        return None
+
+
+def create_radar_plot_for_pdf(commune_data, df_filtered=None):
+    """
+    Crée un radar plot pour le PDF - Utilise la MÊME logique que create_radar_coherent()
+    
+    LOGIQUE UNIFORME : 
+    - Plus on s'éloigne du CENTRE (0) vers l'EXTÉRIEUR (100) = MIEUX C'EST
+    """
+    
+    norms = normaliser_indicateurs_pour_radar(commune_data)
+    
+    categories = [
+        'TEB (%) 0-30%',
+        'Années Désendettement 0-15 ans',
+        'Annuité/CAF (%) 0-80%',
+        'FDR (jours) 0-300j',
+        'Rigidité (%) inversion 0-200%'
+    ]
+    
+    values_commune = [
+        norms['TEB_norm'],
+        norms['CD_norm'],
+        norms['Annuité_CAF_norm'],
+        norms['FDR_norm'],
+        norms['Rigidité_norm']
+    ]
+    
+    # Seuils vert normalisés
+    seuils_vert = [
+        (15 / 30) * 100,              # TEB : 50
+        ((15 - 8) / 15) * 100,        # CD : 46.67
+        ((80 - 50) / 80) * 100,       # Annuité : 37.5
+        (240 / 300) * 100,            # FDR : 80
+        ((200 - 100) / 200) * 100     # Rigidité : 50
+    ]
+    
+    fig = go.Figure()
+    
+    # Trace commune
+    fig.add_trace(go.Scatterpolar(
+        r=values_commune,
+        theta=categories,
+        fill='toself',
+        name=commune_data['Commune'],
+        line=dict(color='#3b82f6', width=3),
+        marker=dict(size=8),
+        fillcolor='rgba(59, 130, 246, 0.25)'
+    ))
+    
+    # Trace seuils vert
+    fig.add_trace(go.Scatterpolar(
+        r=seuils_vert,
+        theta=categories,
+        fill=None,
+        name='Seuil Vert',
+        line=dict(color='#10b981', width=2, dash='dash'),
+        marker=dict(size=6),
+    ))
+    
+    # Trace moyenne strate
+    if df_filtered is not None and not df_filtered.empty:
+        moyennes_strate = df_filtered.apply(normaliser_indicateurs_pour_radar, axis=1).apply(pd.Series).mean()
+        
+        values_strate = [
+            moyennes_strate['TEB_norm'],
+            moyennes_strate['CD_norm'],
+            moyennes_strate['Annuité_CAF_norm'],
+            moyennes_strate['FDR_norm'],
+            moyennes_strate['Rigidité_norm']
+        ]
+        
+        fig.add_trace(go.Scatterpolar(
+            r=values_strate,
+            theta=categories,
+            fill='toself',
+            name='Moyenne Strate',
+            line=dict(color='#f59e0b', width=2, dash='dot'),
+            marker=dict(size=6),
+            fillcolor='rgba(245, 158, 11, 0.15)'
+        ))
+    
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                showticklabels=True,
+                ticks='outside',
+                tickfont=dict(size=10),
+                gridcolor='rgba(243, 244, 246, 0.5)'
+            ),
+            angularaxis=dict(
+                tickfont=dict(size=11)
+            )
+        ),
+        showlegend=True,
+        title=dict(
+            text=f"<b>Profil Financier Coherent</b><br><sub>{commune_data['Commune']} | Score: {commune_data['Score']:.0f}/100</sub>",
+            font=dict(size=14)
+        ),
+        height=600,
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=1.05
+        ),
+        font=dict(size=12),
+        margin=dict(l=50, r=150, t=80, b=50)
+    )
+    
+    fig.add_annotation(
+        text="<b>Logique uniforme :</b> Plus vers l'exterieur = Mieux<br>Plus vers le centre = Pire",
+        xref="paper", yref="paper",
+        x=0.5, y=-0.1,
+        showarrow=False,
+        font=dict(size=11, color="#666"),
+        align="center"
+    )
+    
+    return fig
 
 # --- Fonction d'export Excel ---
 def create_excel_export(df_kpi):
@@ -1878,6 +2885,55 @@ else:
         else:
             st.warning(f"⚠️ Données historiques insuffisantes pour {commune_selectionnee} (moins de 2 années disponibles)")
             st.info("💡 L'analyse pluriannuelle nécessite au moins 2 années de données consécutives")
+        
+        # === EXPORT PDF ===
+        st.markdown("---")
+        st.subheader("💾 Export Rapport PDF")
+        st.markdown("*Téléchargez un rapport professionnel avec page de garde, sommaire et graphiques*")
+        
+        col_pdf_1, col_pdf_2 = st.columns([3, 1])
+        
+        with col_pdf_1:
+            if st.button("📄 Générer Rapport PDF Complet", key="gen_pdf_button"):
+                with st.spinner("⏳ Génération du PDF en cours..."):
+                    pdf_data = export_commune_analysis_to_pdf_enhanced(
+                        commune_data=commune_data,
+                        df_historical_kpi=df_historical_kpi,
+                        commune_name=commune_selectionnee,
+                        dept_selection=dept_selection,
+                        annee_selection=annee_selection,
+                        df_filtered=df_filtered
+                    )
+                
+                if pdf_data:
+                    st.success("✅ PDF généré avec succès !")
+                    
+                    st.download_button(
+                        label="📥 Télécharger le rapport PDF",
+                        data=pdf_data,
+                        file_name=f"rapport_{commune_selectionnee.replace(' ', '_')}_{annee_selection}.pdf",
+                        mime="application/pdf",
+                        key="download_pdf_button"
+                    )
+                else:
+                    st.error("❌ Erreur lors de la génération du PDF")
+        
+        with col_pdf_2:
+            st.info("""
+            📄 **Contenu du rapport:**
+            • Page de garde
+            • Résumé exécutif
+            • 3 graphiques
+            • Tableau récapitulatif
+            • Conclusions
+            """)
+        
+        # ============================================================
+        # FIN DE LA SECTION PDF DOWNLOAD BUTTON
+        # ============================================================
+        
+        
+        
         # === TABLEAUX DÉTAILLÉS ===
         st.markdown("---")
         
