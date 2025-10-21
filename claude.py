@@ -1794,7 +1794,7 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
         # Radar plot (analyse détaillée)
         fig_radar = create_radar_plot_matplotlib(commune_data, df_filtered=None)
         if fig_radar:
-            fig_radar = enhance_figure_quality(fig_radar)
+        
             temp_img_radar = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
             pio.write_image(fig_radar, temp_img_radar.name, width=1200, height=1200, scale=2)
             temp_images.append(('radar', temp_img_radar.name))
@@ -1802,7 +1802,7 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
         # Score global
         fig_score = create_score_evolution_chart(df_historical_kpi, commune_name)
         if fig_score:
-            fig_score = enhance_figure_quality(fig_score)
+            
             temp_img1 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
             pio.write_image(fig_score, temp_img1.name, width=1400, height=700, scale=2)
             temp_images.append(('score', temp_img1.name))
@@ -1810,7 +1810,7 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
         # Stacked bar
         fig_stacked = create_score_evolution_stacked_bar(df_historical_kpi, commune_name)
         if fig_stacked:
-            fig_stacked = enhance_figure_quality(fig_stacked)
+            
             temp_img2 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
             pio.write_image(fig_stacked, temp_img2.name, width=1400, height=700, scale=2)
             temp_images.append(('stacked', temp_img2.name))
@@ -1818,7 +1818,7 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
         # Lignes
         fig_lines = create_score_evolution_lines(df_historical_kpi, commune_name)
         if fig_lines:
-            fig_lines = enhance_figure_quality(fig_lines)
+            
             temp_img3 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
             pio.write_image(fig_lines, temp_img3.name, width=1400, height=800, scale=2)
             temp_images.append(('lines', temp_img3.name))
