@@ -30,6 +30,7 @@ from reportlab.lib import colors as rl_colors  # ✅ ALIAS ICI
 import matplotlib.pyplot as plt
 import seaborn as sns
 import tempfile
+from math import pi
 
 
 # Configuration de la page
@@ -1791,7 +1792,7 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
         temp_images = []
         
         # Radar plot (analyse détaillée)
-        fig_radar = create_radar_plot_for_pdf(commune_data, df_filtered)
+        fig_radar = create_radar_plot_matplotlib(commune_data, df_filtered=None)
         if fig_radar:
             fig_radar = enhance_figure_quality(fig_radar)
             temp_img_radar = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
@@ -2662,6 +2663,90 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         import traceback
         st.error(traceback.format_exc())
         return None
+
+def create_radar_plot_matplotlib(commune_data, df_filtered=None):
+    """
+    Crée un radar plot avec Matplotlib (pas de dépendance Chrome/Kaleido)
+    """
+    norms = normaliser_indicateurs_pour_radar(commune_data)
+    
+    categories = [
+        'TEB (%) 0-30%',
+        'Années Désendettement\n0-15 ans',
+        'Annuité/CAF (%)\n0-80%',
+        'FDR (jours)\n0-300j',
+        'Rigidité (%)\ninversion 0-200%'
+    ]
+    
+    values_commune = [
+        norms['TEB_norm'],
+        norms['CD_norm'],
+        norms['Annuité_CAF_norm'],
+        norms['FDR_norm'],
+        norms['Rigidité_norm']
+    ]
+    
+    # Seuils vert normalisés
+    seuils_vert = [
+        (15 / 30) * 100,              # TEB : 50
+        ((15 - 8) / 15) * 100,        # CD : 46.67
+        ((80 - 50) / 80) * 100,       # Annuité : 37.5
+        (240 / 300) * 100,            # FDR : 80
+        ((200 - 100) / 200) * 100     # Rigidité : 50
+    ]
+    
+    # Nombre de variables
+    num_vars = len(categories)
+    
+    # Angles pour chaque axe
+    angles = [n / float(num_vars) * 2 * pi for n in range(num_vars)]
+    values_commune += values_commune[:1]  # Fermer le polygone
+    seuils_vert += seuils_vert[:1]
+    angles += angles[:1]
+    
+    # Créer la figure
+    fig, ax = plt.subplots(figsize=(12, 12), subplot_kw=dict(projection='polar'))
+    
+    # Tracer la commune
+    ax.plot(angles, values_commune, 'o-', linewidth=3, label=commune_data['Commune'], color='#3b82f6')
+    ax.fill(angles, values_commune, alpha=0.25, color='#3b82f6')
+    
+    # Tracer les seuils verts
+    ax.plot(angles, seuils_vert, 'o--', linewidth=2, label='Seuil Vert', color='#10b981')
+    
+    # Moyenne strate si disponible
+    if df_filtered is not None and not df_filtered.empty:
+        moyennes_strate = df_filtered.apply(normaliser_indicateurs_pour_radar, axis=1).apply(pd.Series).mean()
+        
+        values_strate = [
+            moyennes_strate['TEB_norm'],
+            moyennes_strate['CD_norm'],
+            moyennes_strate['Annuité_CAF_norm'],
+            moyennes_strate['FDR_norm'],
+            moyennes_strate['Rigidité_norm']
+        ]
+        values_strate += values_strate[:1]
+        
+        ax.plot(angles, values_strate, 's:', linewidth=2, label='Moyenne Strate', color='#f59e0b')
+        ax.fill(angles, values_strate, alpha=0.15, color='#f59e0b')
+    
+    # Configurer les axes
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(categories, size=11)
+    ax.set_ylim(0, 100)
+    ax.set_yticks([25, 50, 75, 100])
+    ax.set_yticklabels(['25', '50', '75', '100'], size=10)
+    ax.grid(True, alpha=0.3)
+    
+    # Titre et légende
+    plt.title(f'🎯 Profil Financier Cohérent\n{commune_data["Commune"]} | Score: {commune_data["Score"]:.0f}/100',
+              size=14, fontweight='bold', pad=20)
+    
+    ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), frameon=True, shadow=True)
+    
+    plt.tight_layout()
+    return fig
+
 
 
 def create_radar_plot_for_pdf(commune_data, df_filtered=None):
