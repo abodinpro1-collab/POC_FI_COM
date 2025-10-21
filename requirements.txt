@@ -9,3 +9,4 @@ weasyprint>=60.0
 scipy>=1.10.0
 matplotlib>=3.7.0
 kaleido
+seaborn>=0.12.0
