@@ -1796,7 +1796,7 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
         if fig_radar:
         
             temp_img_radar = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-            pio.write_image(fig_radar, temp_img_radar.name, width=1200, height=1200, scale=2)
+            fig_radar.savefig(fig_radar, temp_img_radar.name, width=1200, height=1200, scale=2)
             temp_images.append(('radar', temp_img_radar.name))
         
         # Score global
@@ -1804,7 +1804,7 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
         if fig_score:
             
             temp_img1 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-            pio.write_image(fig_score, temp_img1.name, width=1400, height=700, scale=2)
+            fig_score.savefig(fig_score, temp_img1.name, width=1400, height=700, scale=2)
             temp_images.append(('score', temp_img1.name))
         
         # Stacked bar
@@ -1812,7 +1812,7 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
         if fig_stacked:
             
             temp_img2 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-            pio.write_image(fig_stacked, temp_img2.name, width=1400, height=700, scale=2)
+            fig_stacked.savefig(fig_stacked, temp_img2.name, width=1400, height=700, scale=2)
             temp_images.append(('stacked', temp_img2.name))
         
         # Lignes
@@ -1820,7 +1820,7 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
         if fig_lines:
             
             temp_img3 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-            pio.write_image(fig_lines, temp_img3.name, width=1400, height=800, scale=2)
+            fig_lines.savefig(fig_lines, temp_img3.name, width=1400, height=800, scale=2)
             temp_images.append(('lines', temp_img3.name))
         
         # ✨ GRAPHIQUES INDIVIDUELS UN PAR UN (PAS DE GRID)
