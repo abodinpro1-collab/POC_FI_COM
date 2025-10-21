@@ -27,7 +27,9 @@ from reportlab.platypus import (
     SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak, KeepTogether
 )
 from reportlab.lib import colors as rl_colors  # ✅ ALIAS ICI
-
+import matplotlib.pyplot as plt
+import seaborn as sns
+import tempfile
 
 
 # Configuration de la page
@@ -574,6 +576,260 @@ def create_evolution_charts(df_historical_kpi, commune_name):
     
     return fig_teb, fig_cd, fig_annuite, fig_fdr
 
+def create_evolution_charts_seaborn(df_historical_kpi, commune_name):
+    """
+    Crée les graphiques d'évolution des KPI avec Seaborn
+    Retourne 4 figures matplotlib
+    """
+    if df_historical_kpi.empty:
+        return None, None, None, None
+    
+    # ========================================
+    # Graphique 1: Évolution TEB
+    # ========================================
+    fig_teb, ax = plt.subplots(figsize=(12, 6))
+    
+    # Ligne commune
+    sns.lineplot(
+        data=df_historical_kpi, 
+        x='Année', 
+        y='TEB Commune (%)',
+        marker='o',
+        linewidth=3,
+        markersize=10,
+        label=f'{commune_name}',
+        color='#1f77b4',
+        ax=ax
+    )
+    
+    # Ligne strate
+    sns.lineplot(
+        data=df_historical_kpi, 
+        x='Année', 
+        y='TEB Strate (%)',
+        marker='o',
+        linewidth=2,
+        markersize=8,
+        linestyle='--',
+        label='Moyenne strate',
+        color='#ff7f0e',
+        ax=ax
+    )
+    
+    # Lignes de seuil
+    ax.axhline(y=15, color='green', linestyle=':', linewidth=1.5, alpha=0.7)
+    ax.text(df_historical_kpi['Année'].min(), 15.5, 'Seuil bon (15%)', 
+            color='green', fontsize=9, va='bottom')
+    
+    ax.axhline(y=10, color='orange', linestyle=':', linewidth=1.5, alpha=0.7)
+    ax.text(df_historical_kpi['Année'].min(), 10.5, 'Seuil critique (10%)', 
+            color='orange', fontsize=9, va='bottom')
+    
+    ax.set_title("📈 Évolution du Taux d'Épargne Brute (TEB)", fontsize=14, fontweight='bold', pad=20)
+    ax.set_xlabel("Année", fontsize=12)
+    ax.set_ylabel("TEB (%)", fontsize=12)
+    ax.legend(loc='best', frameon=True, shadow=True)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
+    # ========================================
+    # Graphique 2: Évolution Capacité de désendettement
+    # ========================================
+    fig_cd, ax = plt.subplots(figsize=(12, 6))
+    
+    sns.lineplot(
+        data=df_historical_kpi, 
+        x='Année', 
+        y='Années de Désendettement',
+        marker='o',
+        linewidth=3,
+        markersize=10,
+        label=f'{commune_name}',
+        color='#1f77b4',
+        ax=ax
+    )
+    
+    sns.lineplot(
+        data=df_historical_kpi, 
+        x='Année', 
+        y='CD Strate (années)',
+        marker='o',
+        linewidth=2,
+        markersize=8,
+        linestyle='--',
+        label='Moyenne strate',
+        color='#ff7f0e',
+        ax=ax
+    )
+    
+    ax.axhline(y=8, color='green', linestyle=':', linewidth=1.5, alpha=0.7)
+    ax.text(df_historical_kpi['Année'].min(), 8.5, 'Seuil bon (8 ans)', 
+            color='green', fontsize=9, va='bottom')
+    
+    ax.axhline(y=12, color='red', linestyle=':', linewidth=1.5, alpha=0.7)
+    ax.text(df_historical_kpi['Année'].min(), 12.5, 'Seuil critique (12 ans)', 
+            color='red', fontsize=9, va='bottom')
+    
+    ax.set_title("⏳ Évolution de la Capacité de Désendettement", fontsize=14, fontweight='bold', pad=20)
+    ax.set_xlabel("Année", fontsize=12)
+    ax.set_ylabel("Capacité (années)", fontsize=12)
+    ax.legend(loc='best', frameon=True, shadow=True)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
+    # ========================================
+    # Graphique 3: Évolution Ratio Annuité/CAF
+    # ========================================
+    fig_annuite, ax = plt.subplots(figsize=(12, 6))
+    
+    sns.lineplot(
+        data=df_historical_kpi, 
+        x='Année', 
+        y='Annuité/CAF Commune (%)',
+        marker='o',
+        linewidth=3,
+        markersize=10,
+        label=f'{commune_name}',
+        color='#1f77b4',
+        ax=ax
+    )
+    
+    sns.lineplot(
+        data=df_historical_kpi, 
+        x='Année', 
+        y='Annuité/CAF Strate (%)',
+        marker='o',
+        linewidth=2,
+        markersize=8,
+        linestyle='--',
+        label='Moyenne strate',
+        color='#ff7f0e',
+        ax=ax
+    )
+    
+    ax.axhline(y=50, color='green', linestyle=':', linewidth=1.5, alpha=0.7)
+    ax.text(df_historical_kpi['Année'].min(), 50.5, 'Seuil bon (50%)', 
+            color='green', fontsize=9, va='bottom')
+    
+    ax.axhline(y=60, color='red', linestyle=':', linewidth=1.5, alpha=0.7)
+    ax.text(df_historical_kpi['Année'].min(), 60.5, 'Seuil critique (60%)', 
+            color='red', fontsize=9, va='bottom')
+    
+    ax.set_title("💳 Évolution du Ratio Annuité/CAF Brute", fontsize=14, fontweight='bold', pad=20)
+    ax.set_xlabel("Année", fontsize=12)
+    ax.set_ylabel("Annuité/CAF (%)", fontsize=12)
+    ax.legend(loc='best', frameon=True, shadow=True)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
+    # ========================================
+    # Graphique 4: Évolution FDR en jours
+    # ========================================
+    fig_fdr, ax = plt.subplots(figsize=(12, 6))
+    
+    sns.lineplot(
+        data=df_historical_kpi, 
+        x='Année', 
+        y='FDR Jours Commune',
+        marker='o',
+        linewidth=3,
+        markersize=10,
+        label=f'{commune_name}',
+        color='#1f77b4',
+        ax=ax
+    )
+    
+    sns.lineplot(
+        data=df_historical_kpi, 
+        x='Année', 
+        y='FDR Jours Moyenne',
+        marker='o',
+        linewidth=2,
+        markersize=8,
+        linestyle='--',
+        label='Moyenne strate',
+        color='#ff7f0e',
+        ax=ax
+    )
+    
+    ax.axhline(y=240, color='green', linestyle=':', linewidth=1.5, alpha=0.7)
+    ax.text(df_historical_kpi['Année'].min(), 245, 'Seuil bon (240j)', 
+            color='green', fontsize=9, va='bottom')
+    
+    ax.axhline(y=60, color='red', linestyle=':', linewidth=1.5, alpha=0.7)
+    ax.text(df_historical_kpi['Année'].min(), 65, 'Seuil critique (60j)', 
+            color='red', fontsize=9, va='bottom')
+    
+    ax.set_title("👥 Évolution du Fonds de Roulement", fontsize=14, fontweight='bold', pad=20)
+    ax.set_xlabel("Année", fontsize=12)
+    ax.set_ylabel("FDR (jours de DRF)", fontsize=12)
+    ax.legend(loc='best', frameon=True, shadow=True)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
+    return fig_teb, fig_cd, fig_annuite, fig_fdr
+
+
+def create_score_evolution_chart_seaborn(df_historical_kpi, commune_name):
+    """
+    Crée un graphique d'évolution du score avec zones colorées
+    """
+    if df_historical_kpi.empty or len(df_historical_kpi) < 2:
+        return None
+    
+    df = df_historical_kpi.sort_values('Année').reset_index(drop=True)
+    
+    fig, ax = plt.subplots(figsize=(14, 7))
+    
+    # Zones de couleur (seuils de scoring)
+    ax.axhspan(75, 100, facecolor='#00C851', alpha=0.1, zorder=0)
+    ax.axhspan(50, 75, facecolor='#FF8C00', alpha=0.1, zorder=0)
+    ax.axhspan(0, 50, facecolor='#FF4B4B', alpha=0.1, zorder=0)
+    
+    # Ligne du score
+    sns.lineplot(
+        data=df,
+        x='Année',
+        y='Score Commune',
+        marker='o',
+        linewidth=4,
+        markersize=12,
+        label='Score Global',
+        color='black',
+        ax=ax
+    )
+    
+    # Lignes de seuil
+    ax.axhline(y=75, color='green', linestyle='--', linewidth=1.5, alpha=0.7)
+    ax.text(df['Année'].max() + 0.1, 75, 'Seuil Vert (75)', 
+            color='green', fontsize=10, va='center')
+    
+    ax.axhline(y=50, color='orange', linestyle='--', linewidth=1.5, alpha=0.7)
+    ax.text(df['Année'].max() + 0.1, 50, 'Seuil Orange (50)', 
+            color='orange', fontsize=10, va='center')
+    
+    ax.set_title(f"📈 Évolution du score de santé financière - {commune_name} (2019-2024)", 
+                 fontsize=14, fontweight='bold', pad=20)
+    ax.set_xlabel("Année", fontsize=12)
+    ax.set_ylabel("Score de santé (/100)", fontsize=12)
+    ax.set_ylim(0, 100)
+    ax.legend(loc='lower left', frameon=True, shadow=True)
+    ax.grid(True, alpha=0.3)
+    
+    # Ajouter les valeurs sur les points
+    for idx, row in df.iterrows():
+        ax.annotate(f"{row['Score Commune']:.1f}", 
+                   xy=(row['Année'], row['Score Commune']),
+                   xytext=(0, 10), textcoords='offset points',
+                   ha='center', fontsize=9, fontweight='bold')
+    
+    plt.tight_layout()
+    return fig
+
+
+
+
+
 def create_score_evolution_chart(df_historical_kpi, commune_name):
     """
     Crée un graphique d'évolution du score avec tendance linéaire
@@ -941,6 +1197,73 @@ def create_score_evolution_lines(df_historical_kpi, commune_name):
     
     return fig
 
+
+def create_evolution_details_seaborn(df_historical_kpi, commune_name):
+    """Graphique avec tous les 4 indicateurs individuels"""
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    fig.suptitle('Evolution des Indicateurs Detailles', fontsize=16, fontweight='bold')
+    
+    sns.set_style("whitegrid")
+    
+    # TEB
+    ax = axes[0, 0]
+    ax.plot(df_historical_kpi['Annee'], df_historical_kpi['TEB Commune (%)'],
+            marker='o', linewidth=3, markersize=8, label=commune_name, color='#1f77b4')
+    ax.plot(df_historical_kpi['Annee'], df_historical_kpi['TEB Strate (%)'],
+            marker='s', linewidth=2, markersize=6, linestyle='--', label='Moyenne strate', color='#ff7f0e')
+    ax.axhline(y=15, color='green', linestyle=':', alpha=0.7)
+    ax.axhline(y=10, color='orange', linestyle=':', alpha=0.7)
+    ax.set_title('TEB - Taux d\'Epargne Brute', fontweight='bold')
+    ax.set_ylabel('TEB (%)', fontweight='bold')
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
+    
+    # CD
+    ax = axes[0, 1]
+    ax.plot(df_historical_kpi['Annee'], df_historical_kpi['Annees de Desendettement'],
+            marker='o', linewidth=3, markersize=8, label=commune_name, color='#1f77b4')
+    ax.plot(df_historical_kpi['Annee'], df_historical_kpi['CD Strate (annees)'],
+            marker='s', linewidth=2, markersize=6, linestyle='--', label='Moyenne strate', color='#ff7f0e')
+    ax.axhline(y=8, color='green', linestyle=':', alpha=0.7)
+    ax.axhline(y=12, color='red', linestyle=':', alpha=0.7)
+    ax.set_title('CD - Capacite de Desendettement', fontweight='bold')
+    ax.set_ylabel('Annees', fontweight='bold')
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
+    
+    # Annuité/CAF
+    ax = axes[1, 0]
+    ax.plot(df_historical_kpi['Annee'], df_historical_kpi['Annuite/CAF Commune (%)'],
+            marker='o', linewidth=3, markersize=8, label=commune_name, color='#1f77b4')
+    ax.plot(df_historical_kpi['Annee'], df_historical_kpi['Annuite/CAF Strate (%)'],
+            marker='s', linewidth=2, markersize=6, linestyle='--', label='Moyenne strate', color='#ff7f0e')
+    ax.axhline(y=50, color='green', linestyle=':', alpha=0.7)
+    ax.axhline(y=60, color='red', linestyle=':', alpha=0.7)
+    ax.set_title('Ratio Annuite / CAF Brute', fontweight='bold')
+    ax.set_ylabel('Annuite/CAF (%)', fontweight='bold')
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
+    
+    # FDR
+    ax = axes[1, 1]
+    ax.plot(df_historical_kpi['Annee'], df_historical_kpi['FDR Jours Commune'],
+            marker='o', linewidth=3, markersize=8, label=commune_name, color='#1f77b4')
+    ax.plot(df_historical_kpi['Annee'], df_historical_kpi['FDR Jours Moyenne'],
+            marker='s', linewidth=2, markersize=6, linestyle='--', label='Moyenne strate', color='#ff7f0e')
+    ax.axhline(y=240, color='green', linestyle=':', alpha=0.7)
+    ax.axhline(y=60, color='red', linestyle=':', alpha=0.7)
+    ax.set_title('FDR - Fonds de Roulement', fontweight='bold')
+    ax.set_ylabel('FDR (jours)', fontweight='bold')
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    return fig
+
+
+
+
+
 def enhance_figure_quality(fig):
     """Améliore la qualité visuelle d'une figure Plotly - Légende en bas"""
     fig.update_layout(
@@ -1293,6 +1616,117 @@ def create_radar_coherent(commune_data, df_filtered=None):
     
     return fig
 
+def create_radar_seaborn(commune_data, df_filtered=None):
+    """
+    Crée un radar cohérent en Matplotlib/Seaborn pour le PDF
+    DIRECTION UNIFORME : Vers l'EXTERIEUR = MIEUX
+    """
+    
+    norms = normaliser_indicateurs_pour_radar(commune_data)
+    
+    categories = [
+        'TEB (%)\n0-30%',
+        'Annees Desendettement\n0-15 ans',
+        'Annuite/CAF (%)\n0-80%',
+        'FDR (jours)\n0-300j',
+        'Rigidite (%)\n0-200%'
+    ]
+    
+    values_commune = [
+        norms['TEB_norm'],
+        norms['CD_norm'],
+        norms['Annuite_CAF_norm'],
+        norms['FDR_norm'],
+        norms['Rigidite_norm']
+    ]
+    
+    # Seuils vert normalises
+    seuils_vert = [
+        (15 / 30) * 100,              # TEB : 50
+        ((15 - 8) / 15) * 100,        # CD : 46.67
+        ((80 - 50) / 80) * 100,       # Annuite : 37.5
+        (240 / 300) * 100,            # FDR : 80
+        ((200 - 100) / 200) * 100     # Rigidite : 50
+    ]
+    
+    # Calculer moyenne strate si disponible
+    values_strate = None
+    if df_filtered is not None and not df_filtered.empty:
+        try:
+            moyennes_strate = df_filtered.apply(normaliser_indicateurs_pour_radar, axis=1).apply(pd.Series).mean()
+            values_strate = [
+                moyennes_strate['TEB_norm'],
+                moyennes_strate['CD_norm'],
+                moyennes_strate['Annuite_CAF_norm'],
+                moyennes_strate['FDR_norm'],
+                moyennes_strate['Rigidite_norm']
+            ]
+        except:
+            values_strate = None
+    
+    # === CREATION DU RADAR ===
+    num_vars = len(categories)
+    angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
+    values_commune += values_commune[:1]  # Fermer le polygone
+    angles += angles[:1]
+    
+    if values_strate:
+        values_strate += values_strate[:1]
+    
+    seuils_vert_closed = seuils_vert + seuils_vert[:1]
+    
+    fig, ax = plt.subplots(figsize=(12, 10), subplot_kw=dict(projection='polar'))
+    fig.patch.set_facecolor('white')
+    
+    # Grille de fond
+    ax.set_theta_offset(np.pi / 2)
+    ax.set_theta_direction(-1)
+    
+    # Trace COMMUNE
+    ax.plot(angles, values_commune, 'o-', linewidth=3, markersize=8,
+            label=commune_data['Commune'], color='#1f77b4')
+    ax.fill(angles, values_commune, alpha=0.25, color='#1f77b4')
+    
+    # Trace STRATE
+    if values_strate:
+        ax.plot(angles, values_strate, 's--', linewidth=2, markersize=6,
+                label='Moyenne Strate', color='#ff7f0e', alpha=0.8)
+        ax.fill(angles, values_strate, alpha=0.1, color='#ff7f0e')
+    
+    # Trace SEUIL VERT
+    ax.plot(angles, seuils_vert_closed, ':', linewidth=2.5,
+            label='Seuil Vert', color='#10b981', alpha=0.8)
+    
+    # Etiquettes des axes
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(categories, size=10, weight='bold')
+    
+    # Grille radiale
+    ax.set_ylim(0, 100)
+    ax.set_yticks([20, 40, 60, 80, 100])
+    ax.set_yticklabels(['20', '40', '60', '80', '100'], size=9)
+    ax.grid(True, alpha=0.3, linestyle='--')
+    
+    # Legende
+    ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), fontsize=10,
+              framealpha=0.95, edgecolor='#cccccc')
+    
+    # Titre
+    score = commune_data.get('Score', 0)
+    fig.suptitle('Profil Financier Coherent', fontsize=14, fontweight='bold', y=0.98)
+    fig.text(0.5, 0.94, f"{commune_data['Commune']} | Score: {score:.1f}/100",
+             ha='center', fontsize=11, color='#666666')
+    
+    # Note explicative
+    fig.text(0.5, 0.02,
+             'Logique uniforme: Plus vers l\'exterieur = Mieux | Plus vers le centre = Pire',
+             ha='center', fontsize=9, color='#999999', style='italic')
+    
+    plt.tight_layout(rect=[0, 0.05, 1, 0.93])
+    
+    return fig
+
+
 
 def create_tableau_normalisation(commune_data):
     """
@@ -1348,6 +1782,149 @@ def create_population_brackets(df):
 # et AVANT "=== RÉCUPÉRATION ET TRAITEMENT DES DONNÉES ==="
 # ============================================================
 
+def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filtered):
+    """
+    Génère tous les graphiques pour le PDF et retourne la liste des fichiers temporaires
+    """
+    try:
+        # === ÉTAPE 1 : Générer les graphiques en PNG ===
+        temp_images = []
+        
+        # Radar plot (analyse détaillée)
+        fig_radar = create_radar_plot_for_pdf(commune_data, df_filtered)
+        if fig_radar:
+            fig_radar = enhance_figure_quality(fig_radar)
+            temp_img_radar = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            pio.write_image(fig_radar, temp_img_radar.name, width=1200, height=1200, scale=2)
+            temp_images.append(('radar', temp_img_radar.name))
+        
+        # Score global
+        fig_score = create_score_evolution_chart(df_historical_kpi, commune_name)
+        if fig_score:
+            fig_score = enhance_figure_quality(fig_score)
+            temp_img1 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            pio.write_image(fig_score, temp_img1.name, width=1400, height=700, scale=2)
+            temp_images.append(('score', temp_img1.name))
+        
+        # Stacked bar
+        fig_stacked = create_score_evolution_stacked_bar(df_historical_kpi, commune_name)
+        if fig_stacked:
+            fig_stacked = enhance_figure_quality(fig_stacked)
+            temp_img2 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            pio.write_image(fig_stacked, temp_img2.name, width=1400, height=700, scale=2)
+            temp_images.append(('stacked', temp_img2.name))
+        
+        # Lignes
+        fig_lines = create_score_evolution_lines(df_historical_kpi, commune_name)
+        if fig_lines:
+            fig_lines = enhance_figure_quality(fig_lines)
+            temp_img3 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            pio.write_image(fig_lines, temp_img3.name, width=1400, height=800, scale=2)
+            temp_images.append(('lines', temp_img3.name))
+        
+        # ✨ GRAPHIQUES INDIVIDUELS UN PAR UN (PAS DE GRID)
+        
+        # 1. TEB individuel
+        fig_teb_ind, ax = plt.subplots(figsize=(14, 7))
+        ax.plot(df_historical_kpi['Année'], df_historical_kpi['TEB Commune (%)'],
+                marker='o', linewidth=3, markersize=10, label=commune_name, color='#1f77b4')
+        ax.plot(df_historical_kpi['Année'], df_historical_kpi['TEB Strate (%)'],
+                marker='s', linewidth=2, markersize=8, linestyle='--', label='Moy. strate', color='#ff7f0e')
+        ax.axhline(y=15, color='green', linestyle=':', linewidth=2, alpha=0.7)
+        ax.text(df_historical_kpi['Année'].min(), 15.5, 'Seuil bon (15%)', color='green', fontsize=10)
+        ax.axhline(y=10, color='orange', linestyle=':', linewidth=2, alpha=0.7)
+        ax.text(df_historical_kpi['Année'].min(), 10.5, 'Seuil critique (10%)', color='orange', fontsize=10)
+        ax.set_title('📈 Évolution du Taux d\'Épargne Brute (TEB)', fontsize=14, fontweight='bold', pad=15)
+        ax.set_xlabel('Année', fontsize=12, fontweight='bold')
+        ax.set_ylabel('TEB (%)', fontsize=12, fontweight='bold')
+        ax.legend(fontsize=11, loc='best', frameon=True, shadow=True)
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        temp_file_teb = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        fig_teb_ind.savefig(temp_file_teb.name, dpi=300, bbox_inches='tight')
+        plt.close(fig_teb_ind)
+        temp_images.append(('teb_ind', temp_file_teb.name))
+        
+        # 2. CD individuel
+        fig_cd_ind, ax = plt.subplots(figsize=(14, 7))
+        ax.plot(df_historical_kpi['Année'], df_historical_kpi['Années de Désendettement'],
+                marker='o', linewidth=3, markersize=10, label=commune_name, color='#1f77b4')
+        ax.plot(df_historical_kpi['Année'], df_historical_kpi['CD Strate (années)'],
+                marker='s', linewidth=2, markersize=8, linestyle='--', label='Moy. strate', color='#ff7f0e')
+        ax.axhline(y=8, color='green', linestyle=':', linewidth=2, alpha=0.7)
+        ax.text(df_historical_kpi['Année'].min(), 8.5, 'Seuil bon (8 ans)', color='green', fontsize=10)
+        ax.axhline(y=12, color='red', linestyle=':', linewidth=2, alpha=0.7)
+        ax.text(df_historical_kpi['Année'].min(), 12.5, 'Seuil critique (12 ans)', color='red', fontsize=10)
+        ax.set_title('⏳ Évolution de la Capacité de Désendettement', fontsize=14, fontweight='bold', pad=15)
+        ax.set_xlabel('Année', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Capacité (années)', fontsize=12, fontweight='bold')
+        ax.legend(fontsize=11, loc='best', frameon=True, shadow=True)
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        temp_file_cd = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        fig_cd_ind.savefig(temp_file_cd.name, dpi=300, bbox_inches='tight')
+        plt.close(fig_cd_ind)
+        temp_images.append(('cd_ind', temp_file_cd.name))
+        
+        # 3. Annuité/CAF individuel
+        fig_annuite_ind, ax = plt.subplots(figsize=(14, 7))
+        ax.plot(df_historical_kpi['Année'], df_historical_kpi['Annuité/CAF Commune (%)'],
+                marker='o', linewidth=3, markersize=10, label=commune_name, color='#1f77b4')
+        ax.plot(df_historical_kpi['Année'], df_historical_kpi['Annuité/CAF Strate (%)'],
+                marker='s', linewidth=2, markersize=8, linestyle='--', label='Moy. strate', color='#ff7f0e')
+        ax.axhline(y=50, color='green', linestyle=':', linewidth=2, alpha=0.7)
+        ax.text(df_historical_kpi['Année'].min(), 50.5, 'Seuil bon (50%)', color='green', fontsize=10)
+        ax.axhline(y=60, color='red', linestyle=':', linewidth=2, alpha=0.7)
+        ax.text(df_historical_kpi['Année'].min(), 60.5, 'Seuil critique (60%)', color='red', fontsize=10)
+        ax.set_title('💳 Évolution du Ratio Annuité/CAF Brute', fontsize=14, fontweight='bold', pad=15)
+        ax.set_xlabel('Année', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Annuité/CAF (%)', fontsize=12, fontweight='bold')
+        ax.legend(fontsize=11, loc='best', frameon=True, shadow=True)
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        temp_file_annuite = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        fig_annuite_ind.savefig(temp_file_annuite.name, dpi=300, bbox_inches='tight')
+        plt.close(fig_annuite_ind)
+        temp_images.append(('annuite_ind', temp_file_annuite.name))
+        
+        # 4. FDR individuel
+        fig_fdr_ind, ax = plt.subplots(figsize=(14, 7))
+        ax.plot(df_historical_kpi['Année'], df_historical_kpi['FDR Jours Commune'],
+                marker='o', linewidth=3, markersize=10, label=commune_name, color='#1f77b4')
+        ax.plot(df_historical_kpi['Année'], df_historical_kpi['FDR Jours Moyenne'],
+                marker='s', linewidth=2, markersize=8, linestyle='--', label='Moy. strate', color='#ff7f0e')
+        ax.axhline(y=240, color='green', linestyle=':', linewidth=2, alpha=0.7)
+        ax.text(df_historical_kpi['Année'].min(), 245, 'Seuil bon (240j)', color='green', fontsize=10)
+        ax.axhline(y=60, color='red', linestyle=':', linewidth=2, alpha=0.7)
+        ax.text(df_historical_kpi['Année'].min(), 65, 'Seuil critique (60j)', color='red', fontsize=10)
+        ax.set_title('👥 Évolution du Fonds de Roulement', fontsize=14, fontweight='bold', pad=15)
+        ax.set_xlabel('Année', fontsize=12, fontweight='bold')
+        ax.set_ylabel('FDR (jours de DRF)', fontsize=12, fontweight='bold')
+        ax.legend(fontsize=11, loc='best', frameon=True, shadow=True)
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        temp_file_fdr = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        fig_fdr_ind.savefig(temp_file_fdr.name, dpi=300, bbox_inches='tight')
+        plt.close(fig_fdr_ind)
+        temp_images.append(('fdr_ind', temp_file_fdr.name))
+        
+        # ✅ RETOURNER LA LISTE DES IMAGES
+        return temp_images
+    
+    except Exception as e:
+        st.error(f"❌ Erreur lors de la génération des graphiques : {e}")
+        import traceback
+        st.error(traceback.format_exc())
+        return []
+
+
+
+
+
+
+
+
+
 # ✅ IMPORTER PLOTLY GRAPH OBJECTS (vérifier qu'il n'est pas déjà importé)
 import plotly.graph_objects as go
 
@@ -1386,69 +1963,8 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
     4. Évolution pluriannuelle
     5. Conclusions
     """
-    
     try:
-        # === ÉTAPE 1 : Générer les graphiques en PNG ===
-        temp_images = []
-        
-        # Radar plot (analyse détaillée)
-        fig_radar = create_radar_plot_for_pdf(commune_data, df_filtered)
-        if fig_radar:
-            fig_radar = enhance_figure_quality(fig_radar)
-            temp_img_radar = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-            pio.write_image(fig_radar, temp_img_radar.name, width=1200, height=1200, scale=2)
-            temp_images.append(('radar', temp_img_radar.name))
-        
-        # Score global
-        fig_score = create_score_evolution_chart(df_historical_kpi, commune_name)
-        if fig_score:
-            fig_score = enhance_figure_quality(fig_score)
-            temp_img1 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-            pio.write_image(fig_score, temp_img1.name, width=1400, height=700,scale=2)
-            temp_images.append(('score', temp_img1.name))
-        
-        # Stacked bar
-        fig_stacked = create_score_evolution_stacked_bar(df_historical_kpi, commune_name)
-        if fig_stacked:
-            fig_stacked = enhance_figure_quality(fig_stacked)
-            temp_img2 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-            pio.write_image(fig_stacked, temp_img2.name, width=1400, height=700, scale=2)
-            temp_images.append(('stacked', temp_img2.name))
-        
-        # Lignes
-        fig_lines = create_score_evolution_lines(df_historical_kpi, commune_name)
-        if fig_lines:
-            fig_lines = enhance_figure_quality(fig_lines)
-            temp_img3 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-            pio.write_image(fig_lines, temp_img3.name, width=1400, height=800, scale =2)
-            temp_images.append(('lines', temp_img3.name))
-        
-        # ✨ AJOUTER LES 4 GRAPHIQUES INDIVIDUELS
-        fig_teb, fig_cd, fig_annuite, fig_fdr = create_evolution_charts(df_historical_kpi, commune_name)
-
-        if fig_teb:
-            fig_teb = enhance_figure_quality(fig_teb)
-            temp_img_teb = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-            pio.write_image(fig_teb, temp_img_teb.name, width=1400, height=700, scale=2)
-            temp_images.append(('teb_ind', temp_img_teb.name))
-
-        if fig_cd:
-            fig_cd = enhance_figure_quality(fig_cd)
-            temp_img_cd = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-            pio.write_image(fig_cd, temp_img_cd.name, width=1400, height=700, scale = 2)
-            temp_images.append(('cd_ind', temp_img_cd.name))
-
-        if fig_annuite:
-            fig_annuite = enhance_figure_quality(fig_annuite)
-            temp_img_annuite = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-            pio.write_image(fig_annuite, temp_img_annuite.name, width=1400, height=700, scale = 2)
-            temp_images.append(('annuite_ind', temp_img_annuite.name))
-
-        if fig_fdr:
-            fig_fdr = enhance_figure_quality(fig_fdr)
-            temp_img_fdr = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-            pio.write_image(fig_fdr, temp_img_fdr.name, width=1400, height=700, scale = 2)
-            temp_images.append(('fdr_ind', temp_img_fdr.name))
+        temp_images = generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filtered)
 
         from io import BytesIO
         from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY   
@@ -1633,11 +2149,11 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         cd = commune_data.get('Années de Désendettement', 0)
         
         if teb > 20 and cd < 6:
-            intro = "Situation financiere saine : la commune dispose d'une epargne robuste et d'une capacite de desendettement maaitrisee."
+            intro = "Situation financiere saine : la commune dispose d'une epargne robuste et d'une capacite de Désendettement maaitrisee."
         elif teb > 15 and cd < 8:
             intro = "Situation financiere acceptable : les indicateurs sont globalement dans les normes de la strate officielle."
         elif teb < 10 or cd > 12:
-            intro = "Situation financiere fragile : attention requise sur l'epargne brute et/ou la capacite de desendettement."
+            intro = "Situation financiere fragile : attention requise sur l'epargne brute et/ou la capacite de Désendettement."
         else:
             intro = "Situation financiere mitigee : certains indicateurs demandent une surveillance particuliere."
         
@@ -2008,7 +2524,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         # CD
         cd_img = [x[1] for x in temp_images if x[0] == 'cd_ind']
         if cd_img and os.path.exists(cd_img[0]):
-            story.append(Paragraph("CD - Capacite de Desendettement", ParagraphStyle(
+            story.append(Paragraph("CD - Capacite de Désendettement", ParagraphStyle(
                 'SubSection',
                 parent=styles['Heading3'],
                 fontName='Helvetica-Bold',
