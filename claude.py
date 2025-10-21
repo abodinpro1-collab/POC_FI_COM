@@ -28,6 +28,8 @@ from reportlab.platypus import (
 )
 from reportlab.lib import colors as rl_colors  # ✅ ALIAS ICI
 
+
+
 # Configuration de la page
 st.set_page_config(
     page_title="Finances Locales - Analyse Départementale",
