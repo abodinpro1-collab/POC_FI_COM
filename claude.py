@@ -1198,6 +1198,116 @@ def create_score_evolution_lines(df_historical_kpi, commune_name):
     
     return fig
 
+def create_score_evolution_lines_seaborn(df_historical_kpi, commune_name):
+    """
+    Crée un graphique en lignes avec Matplotlib
+    """
+    if df_historical_kpi.empty or len(df_historical_kpi) < 2:
+        return None
+    
+    df = df_historical_kpi.sort_values('Année').reset_index(drop=True)
+    
+    # Recalculer les composantes normalisées (0-100)
+    teb_norm = []
+    cd_norm = []
+    annuite_norm = []
+    fdr_norm = []
+    
+    for _, row in df.iterrows():
+        # TEB
+        if pd.notna(row['TEB (%)']):
+            if row['TEB (%)'] > 20:
+                teb_norm.append(100)
+            elif row['TEB (%)'] >= 10:
+                score_pts = ((row['TEB (%)'] - 10) / 10) * 20
+                teb_norm.append((score_pts / 20) * 100)
+            else:
+                teb_norm.append(0)
+        else:
+            teb_norm.append(0)
+        
+        # CD
+        if pd.notna(row.get('Années de Désendettement')) and row.get('Années de Désendettement') > 0:
+            cd_value = row.get('Années de Désendettement')
+            if cd_value < 6:
+                cd_norm.append(100)
+            elif cd_value <= 16:
+                score_pts = 30 - ((cd_value - 6) / 10) * 30
+                cd_norm.append((score_pts / 30) * 100)
+            else:
+                cd_norm.append(0)
+        else:
+            cd_norm.append(50)
+        
+        # Annuité/CAF
+        if pd.notna(row.get('Annuité / CAF (%)')):
+            annuite_caf = row.get('Annuité / CAF (%)')
+            if annuite_caf < 30:
+                annuite_norm.append(100)
+            elif annuite_caf <= 50:
+                score_pts = 30 - ((annuite_caf - 30) / 20) * 30
+                annuite_norm.append((score_pts / 30) * 100)
+            else:
+                annuite_norm.append(0)
+        else:
+            annuite_norm.append(100)
+        
+        # FDR
+        if pd.notna(row.get('FDR Jours Commune')):
+            fdr_jours = row.get('FDR Jours Commune')
+            if fdr_jours > 240:
+                fdr_norm.append(100)
+            elif fdr_jours >= 70:
+                score_pts = ((fdr_jours - 70) / 170) * 20
+                fdr_norm.append((score_pts / 20) * 100)
+            elif fdr_jours >= 30:
+                score_pts = ((fdr_jours - 30) / 40) * 10
+                fdr_norm.append((score_pts / 20) * 100)
+            else:
+                fdr_norm.append(0)
+        else:
+            fdr_norm.append(50)
+    
+    # Créer le graphique
+    fig, ax = plt.subplots(figsize=(16, 8))
+    
+    # Zones de couleur
+    ax.axhspan(75, 100, facecolor='#00C851', alpha=0.05, zorder=0)
+    ax.axhspan(50, 75, facecolor='#FF8C00', alpha=0.05, zorder=0)
+    ax.axhspan(0, 50, facecolor='#FF4B4B', alpha=0.05, zorder=0)
+    
+    # Lignes de seuil
+    ax.axhline(y=75, color='green', linestyle='--', linewidth=1, alpha=0.5)
+    ax.axhline(y=50, color='orange', linestyle='--', linewidth=1, alpha=0.5)
+    
+    # Score global (ligne épaisse)
+    ax.plot(df['Année'], df['Score Commune'], marker='o', linewidth=4, 
+            markersize=12, label='Score Global (/100)', color='black')
+    
+    # Composantes normalisées
+    ax.plot(df['Année'], teb_norm, marker='o', linestyle='--', linewidth=2, 
+            markersize=8, alpha=0.7, label='TEB Santé (0-100)', color='#1f77b4')
+    
+    ax.plot(df['Année'], annuite_norm, marker='o', linestyle='--', linewidth=2, 
+            markersize=8, alpha=0.7, label='Annuité/CAF Santé (0-100)', color='#ff7f0e')
+    
+    ax.plot(df['Année'], cd_norm, marker='o', linestyle='--', linewidth=2, 
+            markersize=8, alpha=0.7, label='CD Santé (0-100)', color='#2ca02c')
+    
+    ax.plot(df['Année'], fdr_norm, marker='o', linestyle='--', linewidth=2, 
+            markersize=8, alpha=0.7, label='FDR Santé (0-100)', color='#d62728')
+    
+    ax.set_title(f"📈 Évolution détaillée du score par composante - {commune_name}", 
+                 fontsize=14, fontweight='bold', pad=20)
+    ax.set_xlabel("Année", fontsize=12)
+    ax.set_ylabel("Score (0-100)", fontsize=12)
+    ax.set_ylim(0, 100)
+    ax.legend(loc='upper left', frameon=True, shadow=True)
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    return fig
+
 
 def create_evolution_details_seaborn(df_historical_kpi, commune_name):
     """Graphique avec tous les 4 indicateurs individuels"""
@@ -1727,6 +1837,97 @@ def create_radar_seaborn(commune_data, df_filtered=None):
     
     return fig
 
+def create_score_evolution_stacked_bar_seaborn(df_historical_kpi, commune_name):
+    """
+    Crée un graphique en barres empilées avec Matplotlib
+    """
+    if df_historical_kpi.empty or len(df_historical_kpi) < 2:
+        return None
+    
+    df = df_historical_kpi.sort_values('Année').reset_index(drop=True)
+    
+    # Recalculer les composantes
+    teb_scores = []
+    cd_scores = []
+    annuite_scores = []
+    fdr_scores = []
+    
+    for _, row in df.iterrows():
+        # TEB
+        if pd.notna(row['TEB (%)']):
+            if row['TEB (%)'] > 20:
+                teb_scores.append(20)
+            elif row['TEB (%)'] >= 10:
+                teb_scores.append(((row['TEB (%)'] - 10) / 10) * 20)
+            else:
+                teb_scores.append(0)
+        else:
+            teb_scores.append(0)
+        
+        # CD
+        if pd.notna(row.get('Années de Désendettement')) and row.get('Années de Désendettement') > 0:
+            cd_value = row.get('Années de Désendettement')
+            if cd_value < 6:
+                cd_scores.append(30)
+            elif cd_value <= 16:
+                cd_scores.append(30 - ((cd_value - 6) / 10) * 30)
+            else:
+                cd_scores.append(0)
+        else:
+            cd_scores.append(15)
+        
+        # Annuité/CAF
+        if pd.notna(row.get('Annuité / CAF (%)')):
+            annuite_caf = row.get('Annuité / CAF (%)')
+            if annuite_caf < 30:
+                annuite_scores.append(30)
+            elif annuite_caf <= 50:
+                annuite_scores.append(30 - ((annuite_caf - 30) / 20) * 30)
+            else:
+                annuite_scores.append(0)
+        else:
+            annuite_scores.append(30)
+        
+        # FDR
+        if pd.notna(row.get('FDR Jours Commune')):
+            fdr_jours = row.get('FDR Jours Commune')
+            if fdr_jours > 240:
+                fdr_scores.append(20)
+            elif fdr_jours >= 70:
+                fdr_scores.append(((fdr_jours - 70) / 170) * 20)
+            elif fdr_jours >= 30:
+                fdr_scores.append(((fdr_jours - 30) / 40) * 10)
+            else:
+                fdr_scores.append(0)
+        else:
+            fdr_scores.append(10)
+    
+    # Créer le graphique
+    fig, ax = plt.subplots(figsize=(14, 7))
+    
+    x = df['Année'].values
+    width = 0.6
+    
+    # Barres empilées
+    p1 = ax.bar(x, fdr_scores, width, label='FDR (20 pts)', color='#d62728')
+    p2 = ax.bar(x, cd_scores, width, bottom=fdr_scores, label='CD (30 pts)', color='#2ca02c')
+    
+    bottom_annuite = [fdr_scores[i] + cd_scores[i] for i in range(len(x))]
+    p3 = ax.bar(x, annuite_scores, width, bottom=bottom_annuite, 
+                label='Annuité/CAF (30 pts)', color='#ff7f0e')
+    
+    bottom_teb = [bottom_annuite[i] + annuite_scores[i] for i in range(len(x))]
+    p4 = ax.bar(x, teb_scores, width, bottom=bottom_teb, label='TEB (20 pts)', color='#1f77b4')
+    
+    ax.set_title(f"📊 Évolution du score par composante (stacked) - {commune_name}", 
+                 fontsize=14, fontweight='bold', pad=20)
+    ax.set_xlabel("Année", fontsize=12)
+    ax.set_ylabel("Points", fontsize=12)
+    ax.legend(loc='upper left', frameon=True, shadow=True)
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    plt.tight_layout()
+    return fig
 
 
 def create_tableau_normalisation(commune_data):
@@ -1800,7 +2001,7 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
             temp_images.append(('radar', temp_img_radar.name))
 
         # Score global
-        fig_score = create_score_evolution_chart(df_historical_kpi, commune_name)
+        fig_score = create_score_evolution_chart_seaborn(df_historical_kpi, commune_name)
         if fig_score:
             temp_img1 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
             fig_score.savefig(temp_img1.name, dpi=300, bbox_inches='tight')
@@ -1808,7 +2009,7 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
             temp_images.append(('score', temp_img1.name))
 
         # Stacked bar
-        fig_stacked = create_score_evolution_stacked_bar(df_historical_kpi, commune_name)
+        fig_stacked = create_score_evolution_stacked_bar_seaborn(df_historical_kpi, commune_name)
         if fig_stacked:
             temp_img2 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
             fig_stacked.savefig(temp_img2.name, dpi=300, bbox_inches='tight')
@@ -1816,7 +2017,7 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
             temp_images.append(('stacked', temp_img2.name))
 
         # Lignes
-        fig_lines = create_score_evolution_lines(df_historical_kpi, commune_name)
+        fig_lines = create_score_evolution_lines_seaborn(df_historical_kpi, commune_name)
         if fig_lines:
             temp_img3 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
             fig_lines.savefig(temp_img3.name, dpi=300, bbox_inches='tight')
