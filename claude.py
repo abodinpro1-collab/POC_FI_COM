@@ -779,6 +779,8 @@ def create_score_evolution_chart_seaborn(df_historical_kpi, commune_name):
         return None
     
     df = df_historical_kpi.sort_values('Année').reset_index(drop=True)
+
+    df['Année'] = pd.to_numeric(df['Année'], errors='coerce')
     
     fig, ax = plt.subplots(figsize=(14, 7))
     
@@ -1206,6 +1208,8 @@ def create_score_evolution_lines_seaborn(df_historical_kpi, commune_name):
         return None
     
     df = df_historical_kpi.sort_values('Année').reset_index(drop=True)
+
+    df['Année'] = pd.to_numeric(df['Année'], errors='coerce')
     
     # Recalculer les composantes normalisées (0-100)
     teb_norm = []
@@ -1845,6 +1849,8 @@ def create_score_evolution_stacked_bar_seaborn(df_historical_kpi, commune_name):
         return None
     
     df = df_historical_kpi.sort_values('Année').reset_index(drop=True)
+
+    df['Année'] = pd.to_numeric(df['Année'], errors='coerce')
     
     # Recalculer les composantes
     teb_scores = []
