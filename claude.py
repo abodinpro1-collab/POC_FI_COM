@@ -404,8 +404,6 @@ if commune_recherche and st.button("Rechercher", key="search_button"):
     else:
         st.warning("Aucune commune trouvée avec ce nom")
 
-# --- Fonction pour calculer les KPI historiques ---
-# --- Fonction pour calculer les KPI historiques ---
 # --- Fonction pour calculer les KPI historiques (VERSION V3) ---
 def calculate_historical_kpis(df_historical):
     """Calcule les KPI historiques pour la commune et sa strate"""
@@ -773,62 +771,182 @@ def create_evolution_charts_seaborn(df_historical_kpi, commune_name):
 
 def create_score_evolution_chart_seaborn(df_historical_kpi, commune_name):
     """
-    Crée un graphique d'évolution du score avec zones colorées
+    Crée un graphique d'évolution du score avec design professionnel
     """
     if df_historical_kpi.empty or len(df_historical_kpi) < 2:
         return None
     
     df = df_historical_kpi.sort_values('Année').reset_index(drop=True)
-
     df['Année'] = pd.to_numeric(df['Année'], errors='coerce')
     
-    fig, ax = plt.subplots(figsize=(14, 7))
+    # ========================================
+    # CONFIGURATION STYLE
+    # ========================================
+    sns.set_style("whitegrid", {
+        'grid.linestyle': '--',
+        'grid.alpha': 0.3,
+        'axes.edgecolor': '.2',
+        'axes.linewidth': 1.5
+    })
     
-    # Zones de couleur (seuils de scoring)
-    ax.axhspan(75, 100, facecolor='#00C851', alpha=0.1, zorder=0)
-    ax.axhspan(50, 75, facecolor='#FF8C00', alpha=0.1, zorder=0)
-    ax.axhspan(0, 50, facecolor='#FF4B4B', alpha=0.1, zorder=0)
+    fig, ax = plt.subplots(figsize=(16, 8))
     
-    # Ligne du score
-    sns.lineplot(
-        data=df,
-        x='Année',
-        y='Score Commune',
-        marker='o',
-        linewidth=4,
-        markersize=12,
-        label='Score Global',
-        color='black',
-        ax=ax
-    )
+    # ========================================
+    # ZONES DE COULEUR AMÉLIORÉES
+    # ========================================
+    ax.axhspan(75, 100, facecolor='#00C851', alpha=0.08, zorder=0, 
+               label='Zone Verte (75-100)')
+    ax.axhspan(50, 75, facecolor='#FF8C00', alpha=0.08, zorder=0,
+               label='Zone Orange (50-75)')
+    ax.axhspan(0, 50, facecolor='#FF4B4B', alpha=0.08, zorder=0,
+               label='Zone Rouge (0-50)')
     
-    # Lignes de seuil
-    ax.axhline(y=75, color='green', linestyle='--', linewidth=1.5, alpha=0.7)
-    ax.text(df['Année'].max() + 0.1, 75, 'Seuil Vert (75)', 
-            color='green', fontsize=10, va='center')
+    # ========================================
+    # LIGNE PRINCIPALE AVEC GRADIENT
+    # ========================================
+    # Points colorés selon le niveau
+    colors = []
+    for score in df['Score Commune']:
+        if score >= 75:
+            colors.append('#00C851')  # Vert
+        elif score >= 50:
+            colors.append('#FF8C00')  # Orange
+        else:
+            colors.append('#FF4B4B')  # Rouge
     
-    ax.axhline(y=50, color='orange', linestyle='--', linewidth=1.5, alpha=0.7)
-    ax.text(df['Année'].max() + 0.1, 50, 'Seuil Orange (50)', 
-            color='orange', fontsize=10, va='center')
+    # Ligne de base épaisse
+    ax.plot(df['Année'], df['Score Commune'], 
+            color='#2C3E50', linewidth=4, alpha=0.8, zorder=3)
     
-    ax.set_title(f"📈 Évolution du score de santé financière - {commune_name} (2019-2024)", 
-                 fontsize=14, fontweight='bold', pad=20)
-    ax.set_xlabel("Année", fontsize=12)
-    ax.set_ylabel("Score de santé (/100)", fontsize=12)
-    ax.set_ylim(0, 100)
-    ax.legend(loc='lower left', frameon=True, shadow=True)
-    ax.grid(True, alpha=0.3)
+    # Points avec couleurs conditionnelles
+    ax.scatter(df['Année'], df['Score Commune'], 
+              c=colors, s=250, zorder=4, edgecolors='white', linewidths=2.5,
+              label='Score de la commune')
     
-    # Ajouter les valeurs sur les points
+    # ========================================
+    # LIGNES DE SEUIL STYLISÉES
+    # ========================================
+    ax.axhline(y=75, color='#00C851', linestyle='--', linewidth=2.5, 
+               alpha=0.9, zorder=2)
+    ax.axhline(y=50, color='#FF8C00', linestyle='--', linewidth=2.5, 
+               alpha=0.9, zorder=2)
+    
+    # Annotations des seuils (à droite)
+    ax.text(df['Année'].max() + 0.15, 75, '✓ Seuil Vert', 
+            color='#00C851', fontsize=11, fontweight='bold', va='center',
+            bbox=dict(boxstyle='round,pad=0.5', facecolor='white', 
+                     edgecolor='#00C851', linewidth=2))
+    
+    ax.text(df['Année'].max() + 0.15, 50, '⚠ Seuil Orange', 
+            color='#FF8C00', fontsize=11, fontweight='bold', va='center',
+            bbox=dict(boxstyle='round,pad=0.5', facecolor='white', 
+                     edgecolor='#FF8C00', linewidth=2))
+    
+    # ========================================
+    # ANNOTATIONS DES VALEURS AMÉLIORÉES
+    # ========================================
     for idx, row in df.iterrows():
-        ax.annotate(f"{row['Score Commune']:.1f}", 
-                   xy=(row['Année'], row['Score Commune']),
-                   xytext=(0, 10), textcoords='offset points',
-                   ha='center', fontsize=9, fontweight='bold')
+        score = row['Score Commune']
+        
+        # Déterminer la couleur et le symbole
+        if score >= 75:
+            color = '#00C851'
+            symbol = '●'
+        elif score >= 50:
+            color = '#FF8C00'
+            symbol = '●'
+        else:
+            color = '#FF4B4B'
+            symbol = '●'
+        
+        # Annotation avec fond blanc
+        ax.annotate(f"{score:.1f}", 
+                   xy=(row['Année'], score),
+                   xytext=(0, 15), 
+                   textcoords='offset points',
+                   ha='center', 
+                   fontsize=10, 
+                   fontweight='bold',
+                   color=color,
+                   bbox=dict(boxstyle='round,pad=0.4', 
+                            facecolor='white', 
+                            edgecolor=color,
+                            linewidth=1.5,
+                            alpha=0.95))
+    
+    # ========================================
+    # TENDANCE (RÉGRESSION LINÉAIRE)
+    # ========================================
+    from scipy import stats
+    x_num = np.arange(len(df))
+    y = df['Score Commune'].values
+    slope, intercept, r_value, p_value, std_err = stats.linregress(x_num, y)
+    tendance = slope * x_num + intercept
+    
+    ax.plot(df['Année'], tendance, 
+            color='#34495E', linestyle=':', linewidth=2.5, alpha=0.6,
+            label=f'Tendance ({slope:+.1f} pts/an)')
+    
+    # ========================================
+    # TITRES ET LABELS AMÉLIORÉS
+    # ========================================
+    ax.set_title(f"📊 Évolution du Score de Santé Financière\n{commune_name} | Période 2019-2024", 
+                 fontsize=16, fontweight='bold', pad=25,
+                 color='#2C3E50')
+    
+    ax.set_xlabel("Année", fontsize=13, fontweight='bold', color='#2C3E50')
+    ax.set_ylabel("Score de Santé (/100)", fontsize=13, fontweight='bold', color='#2C3E50')
+    
+    # ========================================
+    # AXES ET GRILLE
+    # ========================================
+    ax.set_ylim(-5, 105)
+    ax.set_xlim(df['Année'].min() - 0.3, df['Année'].max() + 0.8)
+    
+    # Ticks personnalisés
+    ax.set_yticks([0, 25, 50, 75, 100])
+    ax.set_yticklabels(['0', '25', '50 ⚠', '75 ✓', '100'], 
+                       fontsize=11, fontweight='bold')
+    
+    ax.tick_params(axis='both', which='major', labelsize=11, 
+                   colors='#2C3E50', width=1.5)
+    
+    # Grille améliorée
+    ax.grid(True, alpha=0.25, linestyle='--', linewidth=1, color='#95A5A6')
+    ax.set_axisbelow(True)
+    
+    # ========================================
+    # LÉGENDE PROFESSIONNELLE
+    # ========================================
+    legend = ax.legend(loc='upper left', 
+                      frameon=True, 
+                      shadow=True,
+                      fancybox=True,
+                      framealpha=0.95,
+                      fontsize=10,
+                      edgecolor='#2C3E50',
+                      title='Légende',
+                      title_fontsize=11)
+    legend.get_frame().set_linewidth(1.5)
+    
+    # ========================================
+    # BORDURE EXTÉRIEURE
+    # ========================================
+    for spine in ax.spines.values():
+        spine.set_edgecolor('#2C3E50')
+        spine.set_linewidth(2)
+    
+    # ========================================
+    # NOTE DE BAS DE PAGE
+    # ========================================
+    fig.text(0.99, 0.01, 
+             'Note : Score basé sur TEB (20%), CD (30%), Annuité/CAF (30%), FDR (20%)',
+             ha='right', va='bottom', fontsize=8, style='italic', color='#7F8C8D')
     
     plt.tight_layout()
+    sns.reset_defaults()  # Réinitialiser le style pour ne pas affecter les autres graphiques
+    
     return fig
-
 
 
 
@@ -1201,17 +1319,19 @@ def create_score_evolution_lines(df_historical_kpi, commune_name):
     return fig
 
 def create_score_evolution_lines_seaborn(df_historical_kpi, commune_name):
+
     """
-    Crée un graphique en lignes avec Matplotlib
+    Crée un graphique d'évolution détaillée par composante - Design expert
     """
     if df_historical_kpi.empty or len(df_historical_kpi) < 2:
         return None
     
     df = df_historical_kpi.sort_values('Année').reset_index(drop=True)
-
     df['Année'] = pd.to_numeric(df['Année'], errors='coerce')
     
-    # Recalculer les composantes normalisées (0-100)
+    # ========================================
+    # CALCUL DES COMPOSANTES NORMALISÉES
+    # ========================================
     teb_norm = []
     cd_norm = []
     annuite_norm = []
@@ -1272,46 +1392,284 @@ def create_score_evolution_lines_seaborn(df_historical_kpi, commune_name):
         else:
             fdr_norm.append(50)
     
-    # Créer le graphique
-    fig, ax = plt.subplots(figsize=(16, 8))
+    # ========================================
+    # CONFIGURATION STYLE EXPERT
+    # ========================================
+    sns.set_theme(style="whitegrid", palette="husl")
+    sns.set_palette("Set2")
     
-    # Zones de couleur
-    ax.axhspan(75, 100, facecolor='#00C851', alpha=0.05, zorder=0)
-    ax.axhspan(50, 75, facecolor='#FF8C00', alpha=0.05, zorder=0)
-    ax.axhspan(0, 50, facecolor='#FF4B4B', alpha=0.05, zorder=0)
+    custom_style = {
+        'grid.linestyle': '--',
+        'grid.alpha': 0.15,
+        'axes.edgecolor': '#1a1a1a',
+        'axes.linewidth': 1.2,
+        'axes.spines.left': True,
+        'axes.spines.bottom': True,
+        'axes.spines.top': False,
+        'axes.spines.right': False,
+        'xtick.bottom': False,
+        'ytick.left': False,
+    }
+    sns.set_style("whitegrid", custom_style)
     
-    # Lignes de seuil
-    ax.axhline(y=75, color='green', linestyle='--', linewidth=1, alpha=0.5)
-    ax.axhline(y=50, color='orange', linestyle='--', linewidth=1, alpha=0.5)
+    fig, ax = plt.subplots(figsize=(18, 9), dpi=100)
+    fig.patch.set_facecolor('white')
+    ax.set_facecolor('#FAFBFC')
     
-    # Score global (ligne épaisse)
-    ax.plot(df['Année'], df['Score Commune'], marker='o', linewidth=4, 
-            markersize=12, label='Score Global (/100)', color='black')
+    # ========================================
+    # ZONES DE COULEUR DÉGRADÉE
+    # ========================================
+    # Zones avec gradient subtil
+    ax.axhspan(75, 100, facecolor='#00C851', alpha=0.06, zorder=0, linewidth=0)
+    ax.axhspan(50, 75, facecolor='#FFB84D', alpha=0.06, zorder=0, linewidth=0)
+    ax.axhspan(0, 50, facecolor='#FF6B6B', alpha=0.06, zorder=0, linewidth=0)
     
-    # Composantes normalisées
-    ax.plot(df['Année'], teb_norm, marker='o', linestyle='--', linewidth=2, 
-            markersize=8, alpha=0.7, label='TEB Santé (0-100)', color='#1f77b4')
+    # ========================================
+    # LIGNES DE SEUIL AVEC DÉGRADÉ
+    # ========================================
+    ax.axhline(y=75, color='#00C851', linestyle='--', linewidth=2.2, 
+               alpha=0.6, zorder=2, dash_capstyle='round')
+    ax.axhline(y=50, color='#FFB84D', linestyle='--', linewidth=2.2, 
+               alpha=0.6, zorder=2, dash_capstyle='round')
     
-    ax.plot(df['Année'], annuite_norm, marker='o', linestyle='--', linewidth=2, 
-            markersize=8, alpha=0.7, label='Annuité/CAF Santé (0-100)', color='#ff7f0e')
+    # ========================================
+    # DÉFINITION DES COMPOSANTES AVEC PALETTE COHÉRENTE
+    # ========================================
+    components = [
+        {
+            'data': df['Score Commune'],
+            'label': 'Score Global (/100)',
+            'color': '#1A1A2E',
+            'linewidth': 3.5,
+            'marker': 'o',
+            'markersize': 14,
+            'linestyle': '-',
+            'alpha': 1.0,
+            'zorder': 5,
+            'markerfacecolor': '#1A1A2E',
+            'markeredgewidth': 2.5,
+            'markeredgecolor': 'white'
+        },
+        {
+            'data': teb_norm,
+            'label': 'TEB Santé (20%)',
+            'color': '#2E86AB',
+            'linewidth': 2.2,
+            'marker': 's',
+            'markersize': 9,
+            'linestyle': '--',
+            'alpha': 0.7,
+            'zorder': 4,
+            'markerfacecolor': '#A8DADC',
+            'markeredgewidth': 1.5,
+            'markeredgecolor': '#2E86AB'
+        },
+        {
+            'data': cd_norm,
+            'label': 'CD Santé (30%)',
+            'color': '#27AE60',
+            'linewidth': 2.2,
+            'marker': '^',
+            'markersize': 9,
+            'linestyle': '--',
+            'alpha': 0.7,
+            'zorder': 4,
+            'markerfacecolor': '#A9DFBF',
+            'markeredgewidth': 1.5,
+            'markeredgecolor': '#27AE60'
+        },
+        {
+            'data': annuite_norm,
+            'label': 'Annuité/CAF Santé (30%)',
+            'color': '#F39C12',
+            'linewidth': 2.2,
+            'marker': 'D',
+            'markersize': 8,
+            'linestyle': '--',
+            'alpha': 0.7,
+            'zorder': 4,
+            'markerfacecolor': '#F9E79F',
+            'markeredgewidth': 1.5,
+            'markeredgecolor': '#F39C12'
+        },
+        {
+            'data': fdr_norm,
+            'label': 'FDR Santé (20%)',
+            'color': '#E74C3C',
+            'linewidth': 2.2,
+            'marker': 'v',
+            'markersize': 9,
+            'linestyle': '--',
+            'alpha': 0.7,
+            'zorder': 4,
+            'markerfacecolor': '#F5B7B1',
+            'markeredgewidth': 1.5,
+            'markeredgecolor': '#E74C3C'
+        }
+    ]
     
-    ax.plot(df['Année'], cd_norm, marker='o', linestyle='--', linewidth=2, 
-            markersize=8, alpha=0.7, label='CD Santé (0-100)', color='#2ca02c')
+    # ========================================
+    # TRAÇAGE AVEC EFFETS VISUELS AVANCÉS
+    # ========================================
+    for i, comp in enumerate(components):
+        # Tracer avec effet d'ombre (blur effect)
+        if i > 0:  # Pas d'ombre pour le score global
+            ax.plot(df['Année'], comp['data'], 
+                   color=comp['color'],
+                   linewidth=comp['linewidth'] + 1.5,
+                   alpha=0.1,
+                   linestyle=comp['linestyle'],
+                   zorder=comp['zorder'] - 1)
+        
+        # Ligne principale
+        ax.plot(df['Année'], comp['data'], 
+                marker=comp['marker'],
+                linewidth=comp['linewidth'],
+                markersize=comp['markersize'],
+                linestyle=comp['linestyle'],
+                alpha=comp['alpha'],
+                label=comp['label'],
+                color=comp['color'],
+                zorder=comp['zorder'],
+                markerfacecolor=comp['markerfacecolor'],
+                markeredgewidth=comp['markeredgewidth'],
+                markeredgecolor=comp['markeredgecolor'])
     
-    ax.plot(df['Année'], fdr_norm, marker='o', linestyle='--', linewidth=2, 
-            markersize=8, alpha=0.7, label='FDR Santé (0-100)', color='#d62728')
+    # ========================================
+    # ANNOTATIONS INTELLIGENTES DU SCORE GLOBAL
+    # ========================================
+    for idx, row in df.iterrows():
+        score = row['Score Commune']
+        année = row['Année']
+        
+        # Déterminer la couleur selon le score
+        if score >= 75:
+            color = '#00C851'
+            bg_color = '#E8F8F5'
+        elif score >= 50:
+            color = '#F39C12'
+            bg_color = '#FEF5E7'
+        else:
+            color = '#E74C3C'
+            bg_color = '#FADBD8'
+        
+        # Annotation stylisée
+        ax.annotate(f"{score:.1f}", 
+                   xy=(année, score),
+                   xytext=(0, 22), 
+                   textcoords='offset points',
+                   ha='center', 
+                   fontsize=10, 
+                   fontweight='bold',
+                   color=color,
+                   bbox=dict(boxstyle='round,pad=0.5', 
+                            facecolor=bg_color, 
+                            edgecolor=color,
+                            linewidth=2,
+                            alpha=0.98),
+                   arrowprops=dict(arrowstyle='->', 
+                                  color=color, 
+                                  lw=1, 
+                                  alpha=0.4),
+                   zorder=6)
     
-    ax.set_title(f"📈 Évolution détaillée du score par composante - {commune_name}", 
-                 fontsize=14, fontweight='bold', pad=20)
-    ax.set_xlabel("Année", fontsize=12)
-    ax.set_ylabel("Score (0-100)", fontsize=12)
-    ax.set_ylim(0, 100)
-    ax.legend(loc='upper left', frameon=True, shadow=True)
-    ax.grid(True, alpha=0.3)
+    # ========================================
+    # ANNOTATIONS DES SEUILS AMÉLIORÉES
+    # ========================================
+    ax.text(df['Année'].max() + 0.2, 75, '✓ Seuil Vert (75)', 
+            color='#00C851', fontsize=10, fontweight='bold', va='center',
+            bbox=dict(boxstyle='round,pad=0.6', facecolor='#E8F8F5', 
+                     edgecolor='#00C851', linewidth=2.2, alpha=0.98))
     
-    plt.tight_layout()
+    ax.text(df['Année'].max() + 0.2, 50, '⚠ Seuil Orange (50)', 
+            color='#F39C12', fontsize=10, fontweight='bold', va='center',
+            bbox=dict(boxstyle='round,pad=0.6', facecolor='#FEF5E7', 
+                     edgecolor='#F39C12', linewidth=2.2, alpha=0.98))
+    
+    # ========================================
+    # TITRES ET LABELS EXPERT
+    # ========================================
+    ax.set_title(f"📈 Évolution détaillée du score par composante\n{commune_name} | Période 2019-2024", 
+                 fontsize=18, fontweight='bold', pad=30,
+                 color='#1A1A2E', loc='left')
+    
+    ax.set_xlabel("Année", fontsize=13, fontweight='600', color='#34495E', labelpad=15)
+    ax.set_ylabel("Score de Santé (/100)", fontsize=13, fontweight='600', color='#34495E', labelpad=15)
+    
+    # ========================================
+    # CONFIGURATION AXES AVANCÉE
+    # ========================================
+    ax.set_ylim(-8, 108)
+    ax.set_xlim(df['Année'].min() - 0.4, df['Année'].max() + 1.2)
+    
+    # Ticks personnalisés avec style
+    y_ticks = [0, 25, 50, 75, 100]
+    ax.set_yticks(y_ticks)
+    ax.set_yticklabels(['0', '25', '50', '75', '100'], 
+                       fontsize=11, fontweight='600', color='#34495E')
+    
+    # Petit grid pour les ticks principaux
+    ax.grid(True, alpha=0.25, linestyle='--', linewidth=0.8, color='#BDC3C7', which='major')
+    ax.grid(True, alpha=0.1, linestyle=':', linewidth=0.5, color='#BDC3C7', which='minor')
+    ax.minorticks_on()
+    ax.set_axisbelow(True)
+    
+    # Styling des ticks
+    ax.tick_params(axis='x', which='major', labelsize=11, 
+                   colors='#34495E', width=1.2, length=6, pad=8)
+    ax.tick_params(axis='y', which='major', labelsize=11, 
+                   colors='#34495E', width=1.2, length=6, pad=8)
+    
+    # ========================================
+    # LÉGENDE PROFESSIONNELLE AVEC SEABORN
+    # ========================================
+    legend = ax.legend(loc='upper left', 
+                      frameon=True, 
+                      shadow=False,
+                      fancybox=True,
+                      framealpha=0.97,
+                      fontsize=11,
+                      edgecolor='#95A5A6',
+                      facecolor='white',
+                      title='📊 Composantes du Score',
+                      title_fontsize=12,
+                      ncol=1,
+                      labelspacing=1.2,
+                      handlelength=2.2,
+                      handletextpad=1.2)
+    
+    legend.get_frame().set_linewidth(1.5)
+    legend.get_frame().set_facecolor('#F8F9FA')
+    legend.get_title().set_color('#1A1A2E')
+    legend.get_title().set_fontweight('bold')
+    
+    # ========================================
+    # BORDURES PROFESSIONNELLES
+    # ========================================
+    for spine in ax.spines.values():
+        spine.set_edgecolor('#34495E')
+        spine.set_linewidth(1.5)
+        spine.set_alpha(0.8)
+    
+    # ========================================
+    # ZONE D'INFORMATION BAS DE PAGE
+    # ========================================
+    fig.text(0.02, 0.02, 
+             '📌 Les composantes sont normalisées (0-100)',
+             ha='left', va='bottom', fontsize=8, style='italic', color='#7F8C8D',
+             bbox=dict(boxstyle='round,pad=0.7', facecolor='#F0F0F0', 
+                      edgecolor='#BDC3C7', linewidth=1, alpha=0.8))
+    
+    fig.text(0.98, 0.02, 
+             'Score = TEB (20%) + CD (30%) + Annuité/CAF (30%) + FDR (20%)',
+             ha='right', va='bottom', fontsize=8, style='italic', color='#7F8C8D',
+             bbox=dict(boxstyle='round,pad=0.7', facecolor='#F0F0F0', 
+                      edgecolor='#BDC3C7', linewidth=1, alpha=0.8))
+    
+    plt.tight_layout(rect=[0, 0.05, 1, 0.96])
+    sns.reset_defaults()
+    
     return fig
-
 
 def create_evolution_details_seaborn(df_historical_kpi, commune_name):
     """Graphique avec tous les 4 indicateurs individuels"""
@@ -1842,24 +2200,26 @@ def create_radar_seaborn(commune_data, df_filtered=None):
     return fig
 
 def create_score_evolution_stacked_bar_seaborn(df_historical_kpi, commune_name):
+
     """
-    Crée un graphique en barres empilées avec Matplotlib
+    Crée un graphique en barres empilées avec design expert pour PDF
     """
     if df_historical_kpi.empty or len(df_historical_kpi) < 2:
         return None
     
     df = df_historical_kpi.sort_values('Année').reset_index(drop=True)
-
     df['Année'] = pd.to_numeric(df['Année'], errors='coerce')
     
-    # Recalculer les composantes
+    # ========================================
+    # CALCUL DES COMPOSANTES EN POINTS
+    # ========================================
     teb_scores = []
     cd_scores = []
     annuite_scores = []
     fdr_scores = []
     
     for _, row in df.iterrows():
-        # TEB
+        # TEB (max 20 pts)
         if pd.notna(row['TEB (%)']):
             if row['TEB (%)'] > 20:
                 teb_scores.append(20)
@@ -1870,7 +2230,7 @@ def create_score_evolution_stacked_bar_seaborn(df_historical_kpi, commune_name):
         else:
             teb_scores.append(0)
         
-        # CD
+        # CD (max 30 pts)
         if pd.notna(row.get('Années de Désendettement')) and row.get('Années de Désendettement') > 0:
             cd_value = row.get('Années de Désendettement')
             if cd_value < 6:
@@ -1882,7 +2242,7 @@ def create_score_evolution_stacked_bar_seaborn(df_historical_kpi, commune_name):
         else:
             cd_scores.append(15)
         
-        # Annuité/CAF
+        # Annuité/CAF (max 30 pts)
         if pd.notna(row.get('Annuité / CAF (%)')):
             annuite_caf = row.get('Annuité / CAF (%)')
             if annuite_caf < 30:
@@ -1894,7 +2254,7 @@ def create_score_evolution_stacked_bar_seaborn(df_historical_kpi, commune_name):
         else:
             annuite_scores.append(30)
         
-        # FDR
+        # FDR (max 20 pts)
         if pd.notna(row.get('FDR Jours Commune')):
             fdr_jours = row.get('FDR Jours Commune')
             if fdr_jours > 240:
@@ -1908,31 +2268,221 @@ def create_score_evolution_stacked_bar_seaborn(df_historical_kpi, commune_name):
         else:
             fdr_scores.append(10)
     
-    # Créer le graphique
-    fig, ax = plt.subplots(figsize=(14, 7))
+    # ========================================
+    # CONFIGURATION STYLE EXPERT
+    # ========================================
+    sns.set_theme(style="whitegrid", palette="Set2")
     
+    custom_style = {
+        'grid.linestyle': '--',
+        'grid.alpha': 0.15,
+        'axes.edgecolor': '#1a1a1a',
+        'axes.linewidth': 1.2,
+        'axes.spines.left': True,
+        'axes.spines.bottom': True,
+        'axes.spines.top': False,
+        'axes.spines.right': False,
+        'xtick.bottom': False,
+        'ytick.left': False,
+    }
+    sns.set_style("whitegrid", custom_style)
+    
+    fig, ax = plt.subplots(figsize=(16, 9), dpi=100)
+    fig.patch.set_facecolor('white')
+    ax.set_facecolor('#FAFBFC')
+    
+    # ========================================
+    # PARAMÈTRES DES BARRES
+    # ========================================
     x = df['Année'].values
-    width = 0.6
+    width = 0.65
     
-    # Barres empilées
-    p1 = ax.bar(x, fdr_scores, width, label='FDR (20 pts)', color='#d62728')
-    p2 = ax.bar(x, cd_scores, width, bottom=fdr_scores, label='CD (30 pts)', color='#2ca02c')
+    # Palette de couleurs harmonieuse et optimisée pour l'impression
+    colors = {
+        'fdr': '#C0392B',      # Bleu clair
+        'cd': '#27AE60',       # Vert professionnel
+        'annuite': '#E67E22',  # Orange professionnel
+        'teb': '#5DADE2'       # Rouge professionnel
+    }
     
+    # ========================================
+    # TRACÉ DES BARRES EMPILÉES
+    # ========================================
+    # FDR (base)
+    p1 = ax.bar(x, fdr_scores, width, 
+                label='FDR (20 pts)', 
+                color=colors['fdr'],
+                edgecolor='white',
+                linewidth=1.5,
+                zorder=3)
+    
+    # CD
+    p2 = ax.bar(x, cd_scores, width, 
+                bottom=fdr_scores,
+                label='CD (30 pts)', 
+                color=colors['cd'],
+                edgecolor='white',
+                linewidth=1.5,
+                zorder=3)
+    
+    # Annuité/CAF
     bottom_annuite = [fdr_scores[i] + cd_scores[i] for i in range(len(x))]
-    p3 = ax.bar(x, annuite_scores, width, bottom=bottom_annuite, 
-                label='Annuité/CAF (30 pts)', color='#ff7f0e')
+    p3 = ax.bar(x, annuite_scores, width, 
+                bottom=bottom_annuite,
+                label='Annuité/CAF (30 pts)', 
+                color=colors['annuite'],
+                edgecolor='white',
+                linewidth=1.5,
+                zorder=3)
     
+    # TEB
     bottom_teb = [bottom_annuite[i] + annuite_scores[i] for i in range(len(x))]
-    p4 = ax.bar(x, teb_scores, width, bottom=bottom_teb, label='TEB (20 pts)', color='#1f77b4')
+    p4 = ax.bar(x, teb_scores, width, 
+                bottom=bottom_teb,
+                label='TEB (20 pts)', 
+                color=colors['teb'],
+                edgecolor='white',
+                linewidth=1.5,
+                zorder=3)
     
-    ax.set_title(f"📊 Évolution du score par composante (stacked) - {commune_name}", 
-                 fontsize=14, fontweight='bold', pad=20)
-    ax.set_xlabel("Année", fontsize=12)
-    ax.set_ylabel("Points", fontsize=12)
-    ax.legend(loc='upper left', frameon=True, shadow=True)
-    ax.grid(True, alpha=0.3, axis='y')
+    # ========================================
+    # ANNOTATIONS DES VALEURS TOTALES
+    # ========================================
+    for i, année in enumerate(x):
+        total = df.iloc[i]['Score Commune']
+        
+        # Déterminer la couleur du texte selon le score
+        if total >= 75:
+            text_color = '#00C851'
+            bg_color = '#E8F8F5'
+        elif total >= 50:
+            text_color = '#F39C12'
+            bg_color = '#FEF5E7'
+        else:
+            text_color = '#E74C3C'
+            bg_color = '#FADBD8'
+        
+        # Annotation en haut de chaque barre
+        ax.text(année, total + 2, f'{total:.1f}/100',
+                ha='center', va='bottom',
+                fontsize=11, fontweight='bold',
+                color=text_color,
+                bbox=dict(boxstyle='round,pad=0.5',
+                         facecolor=bg_color,
+                         edgecolor=text_color,
+                         linewidth=1.8,
+                         alpha=0.95))
     
-    plt.tight_layout()
+    # ========================================
+    # LIGNES DE REPÈRE HORIZONTALES
+    # ========================================
+    ax.axhline(y=100, color='#34495E', linestyle='-', linewidth=2.5, 
+               alpha=0.3, zorder=1, label='Score max (100 pts)')
+    ax.axhline(y=75, color='#00C851', linestyle='--', linewidth=2.2, 
+               alpha=0.5, zorder=2)
+    ax.axhline(y=50, color='#F39C12', linestyle='--', linewidth=2.2, 
+               alpha=0.5, zorder=2)
+    
+    # ========================================
+    # ZONES DE COULEUR DE FOND
+    # ========================================
+    ax.axhspan(75, 105, facecolor='#00C851', alpha=0.04, zorder=0)
+    ax.axhspan(50, 75, facecolor='#FFB84D', alpha=0.04, zorder=0)
+    ax.axhspan(0, 50, facecolor='#FF6B6B', alpha=0.04, zorder=0)
+    
+    # ========================================
+    # TITRES ET LABELS EXPERT
+    # ========================================
+    ax.set_title(f"📊 Composition du Score de Santé Financière par Année\n{commune_name} | Détail des Points par Composante", 
+                 fontsize=17, fontweight='bold', pad=25,
+                 color='#1A1A2E', loc='left')
+    
+    ax.set_xlabel("Année", fontsize=12, fontweight='600', color='#34495E', labelpad=12)
+    ax.set_ylabel("Points / 100", fontsize=12, fontweight='600', color='#34495E', labelpad=12)
+    
+    # ========================================
+    # CONFIGURATION AXES AVANCÉE
+    # ========================================
+    ax.set_ylim(0, 110)
+    ax.set_xlim(df['Année'].min() - 0.7, df['Année'].max() + 0.7)
+    
+    # Ticks Y
+    y_ticks = [0, 25, 50, 75, 100]
+    ax.set_yticks(y_ticks)
+    ax.set_yticklabels(['0', '25', '50', '75', '100'], 
+                       fontsize=11, fontweight='600', color='#34495E')
+    
+    # Ticks X
+    ax.set_xticks(x)
+    ax.set_xticklabels([str(int(année)) for année in x], 
+                       fontsize=11, fontweight='600', color='#34495E')
+    
+    # Grid
+    ax.grid(True, alpha=0.2, linestyle='--', linewidth=0.8, 
+            color='#BDC3C7', axis='y', which='major', zorder=0)
+    ax.grid(True, alpha=0.08, linestyle=':', linewidth=0.5, 
+            color='#BDC3C7', axis='y', which='minor')
+    ax.minorticks_on()
+    ax.set_axisbelow(True)
+    
+    # Styling des ticks
+    ax.tick_params(axis='both', which='major', 
+                   colors='#34495E', width=1.2, length=6, pad=8)
+    
+    # ========================================
+    # LÉGENDE PROFESSIONNELLE EN BAS
+    # ========================================
+    legend = ax.legend(loc='lower center',
+                      frameon=True,
+                      shadow=False,
+                      fancybox=True,
+                      framealpha=0.97,
+                      fontsize=11,
+                      edgecolor='#95A5A6',
+                      facecolor='white',
+                      title='📋 Composantes du Score',
+                      title_fontsize=12,
+                      ncol=4,
+                      labelspacing=1.2,
+                      handlelength=2,
+                      handletextpad=1,
+                      bbox_to_anchor=(0.5, -0.18))
+    
+    legend.get_frame().set_linewidth(1.5)
+    legend.get_frame().set_facecolor('#F8F9FA')
+    legend.get_title().set_color('#1A1A2E')
+    legend.get_title().set_fontweight('bold')
+    
+    # ========================================
+    # BORDURES PROFESSIONNELLES
+    # ========================================
+    for spine in ax.spines.values():
+        spine.set_edgecolor('#34495E')
+        spine.set_linewidth(1.5)
+        spine.set_alpha(0.8)
+    
+    # ========================================
+    # ANNOTATIONS INFORMATIVES
+    # ========================================
+    # Note de gauche
+    fig.text(0.02, 0.01,
+             '📌 Chaque année affiche le score total /100 en haut de la barre',
+             ha='left', va='bottom', fontsize=8, style='italic', 
+             color='#7F8C8D',
+             bbox=dict(boxstyle='round,pad=0.7', facecolor='#F0F0F0',
+                      edgecolor='#BDC3C7', linewidth=1, alpha=0.8))
+    
+    # Note de droite
+    fig.text(0.98, 0.01,
+             '✓ Vert (75+) | ⚠ Orange (50-75) | ✗ Rouge (<50)',
+             ha='right', va='bottom', fontsize=8, style='italic',
+             color='#7F8C8D',
+             bbox=dict(boxstyle='round,pad=0.7', facecolor='#F0F0F0',
+                      edgecolor='#BDC3C7', linewidth=1, alpha=0.8))
+    
+    plt.tight_layout(rect=[0, 0.08, 1, 0.96])
+    sns.reset_defaults()
+    
     return fig
 
 
@@ -1979,9 +2529,17 @@ def create_tableau_normalisation(commune_data):
 # --- Fonction pour créer les tranches de population ---
 def create_population_brackets(df):
     """Crée des tranches de population"""
-    df['Tranche pop'] = pd.cut(df['Population'], 
-                               bins=[0, 500, 2000, 10000, float('inf')],
-                               labels=['< 500 hab', '500-2000 hab', '2000-10000 hab', '> 10000 hab'])
+    df['Tranche pop'] = pd.cut(df['Population'],
+                           bins=[0, 100, 200, 500, 2000, 3500, 5000, 10000, 25000, float('inf')],
+                           labels=['Moins de 100 hab',
+                                   '100-200 hab',
+                                   '200-500 hab',
+                                   '500-2000 hab',
+                                   '2000-3500 hab',
+                                   '3500-5000 hab',
+                                   '5000-10000 hab',
+                                   '10000-25000 hab',
+                                   '+ 25000 hab'])
     return df
 
 # ============================================================
@@ -3324,18 +3882,70 @@ else:
         
         with col1:
             fig_scatter = px.scatter(df_filtered, x='TEB (%)', y='Années de Désendettement',
-                                   color='Niveau d\'alerte', size='Population',
-                                   hover_data=['Commune', 'Score'],
-                                   title="💰 Taux d'épargne vs Capacité de désendettement",
-                                   color_discrete_map={
-                                       "🟢 Vert": "#00C851",
-                                       "🟠 Orange": "#FF8C00", 
-                                       "🔴 Rouge": "#FF4B4B"
-                                   })
-            fig_scatter.add_hline(y=12, line_dash="dash", line_color="red", annotation_text="Seuil critique CD (12 ans)")
-            fig_scatter.add_hline(y=8, line_dash="dash", line_color="orange", annotation_text="Seuil CD (8 ans)")
-            fig_scatter.add_vline(x=10, line_dash="dash", line_color="orange", annotation_text="Seuil TEB (10%)")
-            fig_scatter.add_vline(x=15, line_dash="dash", line_color="green", annotation_text="Seuil TEB (15%)")
+                            color='Niveau d\'alerte', size='Population',
+                            hover_data=['Commune', 'Score'],
+                            title="💰 Taux d'épargne vs Années de désendettement",
+                            color_discrete_map={
+                                "🟢 Vert": "#00C851",
+                                "🟠 Orange": "#FF8C00", 
+                                "🔴 Rouge": "#FF4B4B"
+                            },
+                            size_max=50,  # Limiter la taille max des bulles
+                            opacity=0.7)  # Légère transparence pour voir les superpositions
+        
+            # Seuils horizontaux (Années de Désendettement)
+            fig_scatter.add_hline(y=12, line_dash="dash", line_color="red", 
+                                annotation_text="Seuil critique (12 ans)", 
+                                annotation_position="right")
+            fig_scatter.add_hline(y=8, line_dash="dash", line_color="orange", 
+                                annotation_text="Seuil (8 ans)", 
+                                annotation_position="right")
+            
+            # Seuils verticaux (TEB)
+            fig_scatter.add_vline(x=10, line_dash="dash", line_color="orange", 
+                                annotation_text="Seuil (10%)", 
+                                annotation_position="top")
+            fig_scatter.add_vline(x=15, line_dash="dash", line_color="green", 
+                                annotation_text="Seuil (15%)", 
+                                annotation_position="top")
+            
+            # Zone de sécurité (optionnel mais visuelle)
+            fig_scatter.add_vrect(x0=15, x1=100, fillcolor="green", opacity=0.05, 
+                                line_width=0, layer="below")
+            fig_scatter.add_hrect(y0=0, y1=8, fillcolor="green", opacity=0.05, 
+                                line_width=0, layer="below")
+            
+            # Améliorations des axes
+            fig_scatter.update_yaxes(
+                range=[0, 20], 
+                dtick=2,
+                title_font=dict(size=12, color="black"),
+                showgrid=True,
+                gridwidth=1,
+                gridcolor="lightgray"
+            )
+            
+            fig_scatter.update_xaxes(
+                title_font=dict(size=12, color="black"),
+                showgrid=True,
+                gridwidth=1,
+                gridcolor="lightgray"
+            )
+            
+            # Améliorations globales
+            fig_scatter.update_layout(
+                hovermode='closest',  # Meilleur hover
+                height=600,
+                font=dict(size=11),
+                plot_bgcolor="white",  # Fond subtil
+                legend=dict(
+                    x=0.02, y=0.98,
+                    bgcolor="rgba(255,255,255,0.8)",
+                    bordercolor="gray",
+                    borderwidth=1
+                )
+            )
+            
             st.plotly_chart(fig_scatter, use_container_width=True)
         
         with col2:
@@ -3349,38 +3959,130 @@ else:
                            })
             st.plotly_chart(fig_box, use_container_width=True)
         
-        # Ligne 3 : NOUVEAUX GRAPHIQUES (Annuité/CAF et FDR)
+        # Ligne 3 : NOUVEAUX GRAPHIQUES (Annuité/Caf vs Années de désendettement )
         col1, col2 = st.columns(2)
-        
+        SEUIL_DESENDETTEMENT_BON = 8  # Vert
+        SEUIL_DESENDETTEMENT_CRIT = 12  # Rouge
         with col1:
-            # Scatter Annuité/CAF vs FDR
-            fig_annuite_fdr = px.scatter(df_filtered, x='Annuité / CAF (%)', y='FDR Jours Commune',
-                                       color='Niveau d\'alerte', size='Population',
-                                       hover_data=['Commune', 'Score'],
-                                       title="💳 Ratio Annuité/CAF vs Fonds de Roulement",
-                                       color_discrete_map={
-                                           "🟢 Vert": "#00C851",
-                                           "🟠 Orange": "#FF8C00", 
-                                           "🔴 Rouge": "#FF4B4B"
-                                       })
-            fig_annuite_fdr.add_hline(y=240, line_dash="dash", line_color="green", annotation_text="Seuil bon FDR (240j)")
-            fig_annuite_fdr.add_hline(y=60, line_dash="dash", line_color="red", annotation_text="Seuil critique FDR (60j)")
-            fig_annuite_fdr.add_vline(x=50, line_dash="dash", line_color="orange", annotation_text="Seuil Annuité (50%)")
-            fig_annuite_fdr.add_vline(x=60, line_dash="dash", line_color="red", annotation_text="Seuil critique (60%)")
+            fig_annuite_fdr = px.scatter(df_filtered, x='Annuité / CAF (%)', y='Années de Désendettement',
+                                        color='Niveau d\'alerte', size='Population',
+                                        hover_data=['Commune', 'Score'],
+                                        title="💳 Ratio Annuité/CAF vs Années de Désendettement",
+                                        color_discrete_map={
+                                            "🟢 Vert": "#00C851",
+                                            "🟠 Orange": "#FF8C00",
+                                            "🔴 Rouge": "#FF4B4B"
+                                        },
+                                        size_max=50,
+                                        opacity=0.7)
+                
+                # Seuils horizontaux avec les bonnes valeurs
+            fig_annuite_fdr.add_hline(y=SEUIL_DESENDETTEMENT_BON, line_dash="dash", line_color="green", 
+                                        annotation_text="Seuil bon (8 ans)", 
+                                        annotation_position="right")
+            fig_annuite_fdr.add_hline(y=SEUIL_DESENDETTEMENT_CRIT, line_dash="dash", line_color="red", 
+                                        annotation_text="Seuil critique (12 ans)", 
+                                        annotation_position="right")
+                
+                # Seuils verticaux (Annuité/CAF)
+            fig_annuite_fdr.add_vline(x=50, line_dash="dash", line_color="orange", 
+                                        annotation_text="Seuil (50%)", 
+                                        annotation_position="top")
+            fig_annuite_fdr.add_vline(x=60, line_dash="dash", line_color="red", 
+                                        annotation_text="Seuil critique (60%)", 
+                                        annotation_position="top")
+                
+                # Zones de sécurité
+            fig_annuite_fdr.add_vrect(x0=0, x1=50, fillcolor="green", opacity=0.05, 
+                                        line_width=0, layer="below")
+            fig_annuite_fdr.add_hrect(y0=0, y1=SEUIL_DESENDETTEMENT_BON, fillcolor="green", opacity=0.05, 
+                                        line_width=0, layer="below")
+                
+                # Améliorations des axes
+            fig_annuite_fdr.update_yaxes(
+                    range=[0, 20], 
+                    dtick=2,
+                    title_font=dict(size=12, color="black"),
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor="lightgray"
+                )
+                
+            fig_annuite_fdr.update_xaxes(
+                    range=[0, 120],
+                    dtick=10,
+                    title_font=dict(size=12, color="black"),
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor="lightgray"
+                )
+                
+                # Améliorations globales
+            fig_annuite_fdr.update_layout(
+                    hovermode='closest',
+                    height=600,
+                    font=dict(size=11),
+                    plot_bgcolor="white",
+                    legend=dict(
+                        x=0.02, y=0.98,
+                        bgcolor="rgba(255,255,255,0.8)",
+                        bordercolor="gray",
+                        borderwidth=1
+                    )
+                )
+                
             st.plotly_chart(fig_annuite_fdr, use_container_width=True)
         
         with col2:
             # Box plot FDR par niveau
-            fig_fdr_box = px.box(df_filtered, x='Niveau d\'alerte', y='FDR Jours Commune',
-                               title="💰 Distribution du FDR (jours) par niveau d'alerte",
-                               color='Niveau d\'alerte',
-                               color_discrete_map={
-                                   "🟢 Vert": "#00C851",
-                                   "🟠 Orange": "#FF8C00", 
-                                   "🔴 Rouge": "#FF4B4B"
-                               })
-            fig_fdr_box.add_hline(y=240, line_dash="dash", line_color="green")
-            fig_fdr_box.add_hline(y=60, line_dash="dash", line_color="red")
+            fig_fdr_box = px.box(df_filtered, x='Niveau d\'alerte', y='Années de Désendettement',
+                     title="💰 Distribution des Années de Désendettement par niveau d'alerte",
+                     color='Niveau d\'alerte',
+                     color_discrete_map={
+                         "🟢 Vert": "#00C851",
+                         "🟠 Orange": "#FF8C00", 
+                         "🔴 Rouge": "#FF4B4B"
+                     },
+                     points="outliers")  # Afficher les outliers
+
+    # Seuils avec annotations
+            fig_fdr_box.add_hline(y=8, line_dash="dash", line_color="green", 
+                                annotation_text="Seuil bon (8 ans)",
+                                annotation_position="right")
+            fig_fdr_box.add_hline(y=12, line_dash="dash", line_color="red", 
+                                annotation_text="Seuil critique (12 ans)",
+                                annotation_position="right")
+
+            # Zone de sécurité
+            fig_fdr_box.add_hrect(y0=0, y1=8, fillcolor="green", opacity=0.05, 
+                                line_width=0, layer="below")
+
+            # Améliorer les axes
+            fig_fdr_box.update_yaxes(
+                range=[0, 15],  # Échelle fixée de 0 à 15 ans
+                dtick=3,
+                title_font=dict(size=12, color="black"),
+                showgrid=True,
+                gridwidth=1,
+                gridcolor="lightgray"
+            )
+
+            fig_fdr_box.update_xaxes(
+                title_font=dict(size=12, color="black")
+            )
+
+            # Afficher la moyenne et l'écart-type
+            
+
+            # Améliorations globales
+            fig_fdr_box.update_layout(
+                hovermode='closest',
+                height=600,
+                font=dict(size=11),
+                plot_bgcolor="white",
+                showlegend=False  # Pas besoin de légende, les couleurs parlent d'elles-mêmes
+            )
+
             st.plotly_chart(fig_fdr_box, use_container_width=True)
         
         # Ligne 4 : Analyse par taille
@@ -3397,16 +4099,51 @@ else:
         
         with col2:
             fig_debt = px.scatter(df_filtered, x='Population', y='Encours / hab (€/hab)',
-                                color='Niveau d\'alerte', 
-                                title="💳 Endettement par habitant vs Population",
-                                color_discrete_map={
-                                    "🟢 Vert": "#00C851",
-                                    "🟠 Orange": "#FF8C00", 
-                                    "🔴 Rouge": "#FF4B4B"
-                                },
-                                hover_data=['Commune'])
+                      color='Niveau d\'alerte',
+                      title="💳 Endettement par habitant vs Population",
+                      color_discrete_map={
+                          "🟢 Vert": "#00C851",
+                          "🟠 Orange": "#FF8C00",
+                          "🔴 Rouge": "#FF4B4B"
+                      },
+                      hover_data=['Commune'],
+                      size='Population',
+                      size_max=50,
+                      opacity=0.7)
+
+            # Améliorer les axes
+            fig_debt.update_xaxes(
+                range=[0, 25000],
+                dtick=5000,  # Graduations tous les 5000 habitants
+                title_font=dict(size=12, color="black"),
+                showgrid=True,
+                gridwidth=1,
+                gridcolor="lightgray"
+            )
+
+            fig_debt.update_yaxes(
+                title_font=dict(size=12, color="black"),
+                showgrid=True,
+                gridwidth=1,
+                gridcolor="lightgray"
+            )
+
+            # Améliorations globales
+            fig_debt.update_layout(
+                hovermode='closest',
+                height=600,
+                font=dict(size=11),
+                plot_bgcolor="white",
+                legend=dict(
+                    x=0.02, y=0.98,
+                    bgcolor="rgba(255,255,255,0.8)",
+                    bordercolor="gray",
+                    borderwidth=1
+                )
+            )
+
             st.plotly_chart(fig_debt, use_container_width=True)
-        
+                    
         # === TABLEAUX TOP/FLOP ===
         st.markdown("---")
         st.subheader("🏆 Classements")
@@ -3733,7 +4470,8 @@ else:
             📄 **Contenu du rapport:**
             • Page de garde
             • Résumé exécutif
-            • 3 graphiques
+            • Indicateurs clés
+            • Graphiques principaux
             • Tableau récapitulatif
             • Conclusions
             """)
