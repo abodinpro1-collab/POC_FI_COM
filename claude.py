@@ -3017,40 +3017,50 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         # PAGE 3 : INDICATEURS CLES
         # ========================================
         
+    
         story.append(Paragraph("INDICATEURS CLES - ANNEE EN COURS", style_section))
         story.append(Spacer(1, 0.5*cm))
-        
-        kpi_data = [
-            ['INDICATEUR', 'COMMUNE', 'STRATE', 'SEUIL BON', 'STATUT'],
-            [
-                'TEB (%)',
-                f"{commune_data['TEB (%)']:.1f}%",
-                f"{commune_data.get('TEB - Moy. strate (%)', 0):.1f}%",
-                '>15%',
-                'BON' if commune_data['TEB (%)'] > 15 else 'A SURVEILLER'
-            ],
-            [
-                'CD (ans)',
-                f"{commune_data.get('Années de Désendettement', 0):.1f}",
-                f"{commune_data.get('CD - Moy. strate (années)', 0):.1f}",
-                '<8',
-                'BON' if commune_data.get('Années de Désendettement', 0) < 8 else 'A SURVEILLER'
-            ],
-            [
-                'Annuite/CAF (%)',
-                f"{commune_data.get('Annuité / CAF (%)', 0):.1f}%",
-                f"{commune_data.get('Annuité/CAF - Moy. strate (%)', 0):.1f}%",
-                '<50%',
-                'BON' if commune_data.get('Annuité / CAF (%)', 0) < 50 else 'A SURVEILLER'
-            ],
-            [
-                'FDR (j)',
-                f"{commune_data.get('FDR Jours Commune', 0):.0f}",
-                f"{commune_data.get('FDR Jours Moyenne', 0):.0f}",
-                '>240',
-                'BON' if commune_data.get('FDR Jours Commune', 0) > 240 else 'A SURVEILLER'
+
+    # Récupérer les données de l'année actuelle depuis df_historical_kpi
+        if not df_historical_kpi.empty:
+            # Prendre la DERNIÈRE année (année en cours)
+            data_actuelle = df_historical_kpi.iloc[-1]
+            
+            kpi_data = [
+                ['INDICATEUR', 'COMMUNE', 'STRATE', 'SEUIL BON', 'STATUT'],
+                [
+                    'TEB (%)',
+                    f"{data_actuelle['TEB Commune (%)']:.1f}%" if pd.notna(data_actuelle.get('TEB Commune (%)')) else 'N/A',
+                    f"{data_actuelle['TEB Strate (%)']:.1f}%" if pd.notna(data_actuelle.get('TEB Strate (%)')) else 'N/A',
+                    '>15%',
+                    'BON' if pd.notna(data_actuelle.get('TEB Commune (%)')) and data_actuelle['TEB Commune (%)'] > 15 else 'A SURVEILLER'
+                ],
+                [
+                    'CD (ans)',
+                    f"{data_actuelle['Années de Désendettement']:.1f}" if pd.notna(data_actuelle.get('Années de Désendettement')) else 'N/A',
+                    f"{data_actuelle['CD Strate (années)']:.1f}" if pd.notna(data_actuelle.get('CD Strate (années)')) else 'N/A',
+                    '<8',
+                    'BON' if pd.notna(data_actuelle.get('Années de Désendettement')) and data_actuelle['Années de Désendettement'] < 8 else 'A SURVEILLER'
+                ],
+                [
+                    'Annuite/CAF (%)',
+                    f"{data_actuelle['Annuité/CAF Commune (%)']:.1f}%" if pd.notna(data_actuelle.get('Annuité/CAF Commune (%)')) else 'N/A',
+                    f"{data_actuelle['Annuité/CAF Strate (%)']:.1f}%" if pd.notna(data_actuelle.get('Annuité/CAF Strate (%)')) else 'N/A',
+                    '<50%',
+                    'BON' if pd.notna(data_actuelle.get('Annuité/CAF Commune (%)')) and data_actuelle['Annuité/CAF Commune (%)'] < 50 else 'A SURVEILLER'
+                ],
+                [
+                    'FDR (j)',
+                    f"{data_actuelle['FDR Jours Commune']:.0f}" if pd.notna(data_actuelle.get('FDR Jours Commune')) else 'N/A',
+                    f"{data_actuelle['FDR Jours Moyenne']:.0f}" if pd.notna(data_actuelle.get('FDR Jours Moyenne')) else 'N/A',
+                    '>240',
+                    'BON' if pd.notna(data_actuelle.get('FDR Jours Commune')) and data_actuelle['FDR Jours Commune'] > 240 else 'A SURVEILLER'
+                ],
             ]
-        ]
+        else:
+            # Fallback si df_historical_kpi est vide
+            st.warning("⚠️ Données historiques insuffisantes pour le tableau KPI")
+            kpi_data = [['INDICATEUR', 'COMMUNE', 'STRATE', 'SEUIL BON', 'STATUT']]
         
         kpi_table = Table(kpi_data, colWidths=[3.5*cm, 3.2*cm, 3.2*cm, 3*cm, 3*cm])
         kpi_table.setStyle(TableStyle([
