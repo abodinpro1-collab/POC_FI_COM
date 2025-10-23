@@ -3772,7 +3772,22 @@ else:
         
         # --- KPI de base ---
         df_kpi["TEB (%)"] = df_kpi["Épargne brute (K€)"] / df_kpi["RRF (K€)"].replace(0, pd.NA) * 100
-        df_kpi["Années de Désendettement"] = df_kpi["Encours (K€)"] / df_kpi["Épargne brute (K€)"].replace(0, pd.NA)
+        # 🔧 Années de Désendettement avec gestion TEB négatif
+        def calc_annees_desendettement(encours, epargne_brute):
+            """Calcule les années de désendettement"""
+            if pd.isna(encours) or encours <= 0:
+                return 0  # Pas de dette
+            if pd.isna(epargne_brute) or epargne_brute <= 0:
+                return pd.NA  # Impossible si épargne <= 0 (inclut TEB négatif)
+            return encours / epargne_brute
+
+        df_kpi["Années de Désendettement"] = df_kpi.apply(
+            lambda row: calc_annees_desendettement(
+                row["Encours (K€)"], 
+                row["Épargne brute (K€)"]
+            ),
+            axis=1
+        )
         df_kpi["Rigidité (%)"] = (df_kpi["DRF (K€)"] / df_kpi["RRF (K€)"].replace(0, pd.NA) * 100)
         
         # Encours / hab : utiliser directement la colonne si disponible
