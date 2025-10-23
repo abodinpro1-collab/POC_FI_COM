@@ -4215,7 +4215,7 @@ else:
                 categories = ['TEB', 'CD inversée', 'Annuité/CAF inv.', 'FDR Jours', 'Rigidité inv.']
                 
                 # Normalisation des valeurs COMMUNE (0-100)
-                teb_norm = min(100, (commune_data['TEB (%)'] / 15) * 100)
+                teb_norm = max(0, min(100, (commune_data['TEB (%)'] / 15) * 100))
                 cd_norm = max(0, min(100, (12 - commune_data['Années de Désendettement']) / 12 * 100))
                 
                 if pd.notna(commune_data.get('Annuité / CAF (%)')):
