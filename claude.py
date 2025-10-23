@@ -1937,11 +1937,11 @@ def normaliser_indicateurs_pour_radar(row):
         teb_norm = 0
     
     # 2️⃣ CD - PLAGE 0-15 ANS (INVERSÉE)
-    if pd.notna(row['Années de Désendettement']) and row['Années de Désendettement'] > 0:
+    if pd.notna(row['Années de Désendettement']) and row['Années de Désendettement'] > 0:  # ✅ CLEF
         cd_value = min(row['Années de Désendettement'], 15)
         cd_norm = ((15 - cd_value) / 15) * 100
     else:
-        cd_norm = 0
+        cd_norm = 0 
     
     # 3️⃣ ANNUITÉ/CAF (%) - PLAGE 0-80% (INVERSÉE)
     if pd.notna(row['Annuité / CAF (%)']):
