@@ -2041,8 +2041,11 @@ def create_radar_coherent(commune_data, df_filtered=None):
             moyennes_strate['Rigidité_norm']
         ]
         # Clamp final AVANT le radar
-        values_commune = [max(0, min(100, float(v))) for v in values_commune]
-        values_strate = [max(0, min(100, float(v))) for v in values_strate]
+        import numpy as np
+
+        values_commune = np.clip(values_commune, 0, 100)
+        values_strate = np.clip(values_strate, 0, 100)
+
         
         fig.add_trace(go.Scatterpolar(
             r=values_strate,
@@ -4215,7 +4218,7 @@ else:
                 categories = ['TEB', 'CD inversée', 'Annuité/CAF inv.', 'FDR Jours', 'Rigidité inv.']
                 
                 # Normalisation des valeurs COMMUNE (0-100)
-                teb_norm = max(0, min(100, (commune_data['TEB (%)'] / 15) * 100))
+                teb_norm = min(100, (commune_data['TEB (%)'] / 15) * 100)
                 cd_norm = max(0, min(100, (12 - commune_data['Années de Désendettement']) / 12 * 100))
                 
                 if pd.notna(commune_data.get('Annuité / CAF (%)')):
