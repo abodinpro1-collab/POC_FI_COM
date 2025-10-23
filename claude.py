@@ -2922,8 +2922,9 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         
         # Intro
         teb = commune_data['TEB (%)']
+        cd = commune_data.get('Années de Désendettement', 0)
         if pd.isna(cd):
-            cd = float('inf') 
+            cd = float('inf')
         
         if teb > 20 and cd < 6:
             intro = "Situation financiere saine : la commune dispose d'une epargne robuste et d'une capacite de Désendettement maaitrisee."
