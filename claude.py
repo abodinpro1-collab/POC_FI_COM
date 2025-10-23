@@ -2040,6 +2040,9 @@ def create_radar_coherent(commune_data, df_filtered=None):
             moyennes_strate['FDR_norm'],
             moyennes_strate['Rigidité_norm']
         ]
+        # Clamp final AVANT le radar
+        values_commune = [max(0, min(100, float(v))) for v in values_commune]
+        values_strate = [max(0, min(100, float(v))) for v in values_strate]
         
         fig.add_trace(go.Scatterpolar(
             r=values_strate,
