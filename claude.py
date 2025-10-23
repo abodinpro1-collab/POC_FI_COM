@@ -3142,8 +3142,8 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
                 'Bon' if norms['TEB_norm'] > 50 else 'A surveiller' if norms['TEB_norm'] > 25 else 'Faible'
             ],
             [
-                'Annees Desendettement',
-                f"{commune_data.get('Années de Desendettement', 0):.1f} ans",
+                'Années Desendettement',
+                f"{commune_data.get('Années de Désendettement', 0):.1f} ans",
                 '0-15 ans (inversee)',
                 f"{norms['CD_norm']:.1f}",
                 'Bon' if norms['CD_norm'] > 50 else 'A surveiller' if norms['CD_norm'] > 25 else 'Eleve'
