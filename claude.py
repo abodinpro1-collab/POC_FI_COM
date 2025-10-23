@@ -4234,8 +4234,10 @@ else:
                 
                 # Normalisation des valeurs COMMUNE (0-100)
                 teb_norm = min(100, (commune_data['TEB (%)'] / 15) * 100)
-                cd_norm = max(0, min(100, (12 - commune_data['Années de Désendettement']) / 12 * 100))
-                
+                if pd.notna(commune_data['Années de Désendettement']) and commune_data['Années de Désendettement'] > 0:
+                    cd_norm = max(0, min(100, (12 - commune_data['Années de Désendettement']) / 12 * 100))
+                else:
+                    cd_norm = 0
                 if pd.notna(commune_data.get('Annuité / CAF (%)')):
                     annuite_caf_norm = max(0, min(100, (60 - commune_data['Annuité / CAF (%)']) / 60 * 100))
                 else:
