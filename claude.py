@@ -4220,7 +4220,8 @@ else:
                 st.markdown("---")
                 st.markdown("**📊 Indicateurs clés :**")
                 st.markdown(f"- TEB : {commune_data['TEB (%)']:.1f}%")
-                st.markdown(f"- Années Désendettement : {commune_data['Années de Désendettement']:.1f} ans")
+                cd = commune_data['Années de Désendettement']
+                st.markdown(f"- **Années Désendettement :** {'Impossible (TEB négatif)' if pd.isna(cd) else f'{cd:.1f} ans'}")
                 if pd.notna(commune_data['Annuité / CAF (%)']):
                     st.markdown(f"- Annuité/CAF : {commune_data['Annuité / CAF (%)']:.1f}%")
                 else:
