@@ -4208,7 +4208,7 @@ else:
                 categories = ['TEB', 'CD inversée', 'Annuité/CAF inv.', 'FDR Jours', 'Rigidité inv.']
                 
                 # Normalisation des valeurs COMMUNE (0-100)
-                teb_norm = min(100, (commune_data['TEB (%)'] / 15) * 100)
+                teb_norm = max(0, min(100, (commune_data.get('TEB (%)', 0) / 15) * 100))
                 cd_norm = max(0, min(100, (12 - commune_data['Années de Désendettement']) / 12 * 100))
                 
                 if pd.notna(commune_data.get('Annuité / CAF (%)')):
@@ -4238,7 +4238,7 @@ else:
                 fdr_jours_strate = commune_data.get('FDR Jours Moyenne') if pd.notna(commune_data.get('FDR Jours Moyenne')) else 0
                 
                 # Normalisation STRATE
-                teb_strate_norm = min(100, (teb_strate / 15) * 100)
+                teb_strate_norm = max(0, min(100, (teb_strate / 15) * 100))
                 cd_strate_norm = max(0, min(100, (12 - cd_strate) / 12 * 100))
                 rigidite_strate_norm = max(0, min(100, 200 - rigidite_strate))
                 annuite_caf_strate_norm = max(0, min(100, (60 - annuite_caf_strate) / 60 * 100))
