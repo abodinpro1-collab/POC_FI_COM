@@ -1927,7 +1927,7 @@ def normaliser_indicateurs_pour_radar(row):
     
     # 1️⃣ TEB (%) - PLAGE 0-30%
     if pd.notna(row['TEB (%)']):
-        teb_value = min(row['TEB (%)'], 30)
+        teb_value = max(0,min(row['TEB (%)'], 30))
         teb_norm = (teb_value / 30) * 100
     else:
         teb_norm = 0
