@@ -235,6 +235,7 @@ def fetch_communes(dep, an):
                         "DRF (K€)": (fcharge * pop / 1000) if fcharge else None,
                         "Encours (K€)": (fdet2cal * pop / 1000) if fdet2cal else None,
                         "Annuité (K€)": (fannu * pop / 1000) if fannu else None,
+                        "FDR (K€)": record.get("fdr"),  # FDR déjà en K€
                         
                         # MOYENNE STRATE - en K€
                         "RRF - Moy. strate (K€)": (mprod * pop / 1000) if mprod else None,
@@ -245,8 +246,9 @@ def fetch_communes(dep, an):
                         "Département": record.get("dep"),
                         
                         # Épargne brute calculée
-                        "Épargne brute (K€)": ((fprod - fcharge) * pop / 1000) if (fprod and fcharge) else None,
-                        "Épargne brute - Moy. strate (K€)": ((mprod - mcharge) * pop / 1000) if (mprod and mcharge) else None,
+                        "Épargne brute (K€)": record.get("caf"),
+                        "Épargne brute - Moy. strate (K€)": record.get("mcaf"),
+                        "Caf brute (K€)": record.get("caf"),
                         
                         # ✅ NOUVEAUX CHAMPS : directement en €/hab (pas de conversion)
                         "FDR / hab Commune": ffdr,
@@ -420,6 +422,7 @@ def calculate_historical_kpis(df_historical):
     df_kpi_hist["TEB Commune (%)"] = df_kpi_hist["Épargne brute (K€)"] / df_kpi_hist["RRF (K€)"].replace(0, pd.NA) * 100
     df_kpi_hist["Années de Désendettement"] = df_kpi_hist["Encours (K€)"] / df_kpi_hist["Épargne brute (K€)"].replace(0, pd.NA)
     df_kpi_hist["Annuité/CAF Commune (%)"] = df_kpi_hist["Annuité (K€)"] / df_kpi_hist["Épargne brute (K€)"].replace(0, pd.NA) * 100
+    df_kpi_hist["Caf brute (K€)"] = df_kpi_hist["Caf brute (K€)"]
     
     # ✅ FDR en jours - VERSION CORRIGÉE
     if 'FDR / hab Commune' in df_kpi_hist.columns and 'DRF / hab Commune' in df_kpi_hist.columns:
@@ -2694,7 +2697,171 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
         return []
 
 
+def create_financial_summary_table_exact(df_historical_kpi):
+    """
+    Crée le tableau récapitulatif EXACTEMENT comme demandé
+    
+    Ordre des colonnes : 2024 2023 2022 2021 2020 2019
+    
+    Ordre des indicateurs :
+    1. RRF prod
+    2. DRF charge
+    3. CAF Brute caf
+    4. TEB caf/prod (%)
+    5. CRD dette (Encours)
+    6. Désendettement E/C (Années)
+    7. Annuité annu
+    8. Consommation de la CAF par les emprunts annu/caf (%)
+    9. FdR fdr (jours)
+    10. FdR Normatif (fdr*charge)/365
+    """
+    
+    if df_historical_kpi.empty:
+        return None
+    
+    # Trier par année DÉCROISSANTE (2024, 2023, ..., 2019)
+    df_sorted = df_historical_kpi.sort_values('Année', ascending=False).reset_index(drop=True)
+    
+    # Créer l'en-tête avec les années
+    header = ['Indicateur']
+    annees = []
+    for _, row in df_sorted.iterrows():
+        annee = int(row['Année']) if pd.notna(row['Année']) else 'N/A'
+        annees.append(annee)
+        header.append(f"{annee}")
+    
+    tableau_data = [header]
+    
+    # ========================================
+    # 1. RRF prod (Recettes Réelles de Fonctionnement) - en K€
+    # ========================================
+    row_rrf = ['RRF']
+    for _, row in df_sorted.iterrows():
+        if pd.notna(row.get('RRF (K€)')):
+            row_rrf.append(f"{row['RRF (K€)']:,.0f}")
+        else:
+            row_rrf.append('N/A')
+    tableau_data.append(row_rrf)
+    
+    # ========================================
+    # 2. DRF charge (Dépenses Réelles de Fonctionnement) - en K€
+    # ========================================
+    row_drf = ['DRF']
+    for _, row in df_sorted.iterrows():
+        if pd.notna(row.get('DRF (K€)')):
+            row_drf.append(f"{row['DRF (K€)']:,.0f}")
+        else:
+            row_drf.append('N/A')
+    tableau_data.append(row_drf)
+    
+    # ========================================
+    # 3. CAF Brute caf (Épargne Brute) - en K€
+    # ========================================
+    row_caf = ['CAF Brute']
+    for _, row in df_sorted.iterrows():
+        if pd.notna(row.get('Caf brute (K€)')):
+            row_caf.append(f"{row['Caf brute (K€)']:,.0f}")
+        else:
+            row_caf.append('N/A')
+    tableau_data.append(row_caf)
+    
+    # ========================================
+    # 4. TEB caf/prod (%) - Taux d'Épargne Brute
+    # Formule : CAF / RRF * 100
+    # ========================================
+    row_teb = ['TEB']
+    for _, row in df_sorted.iterrows():
+        if pd.notna(row.get('TEB Commune (%)')):
+            teb_value = row['TEB Commune (%)']
+            row_teb.append(f"{teb_value:.1f}%")
+        else:
+            row_teb.append('N/A')
+    tableau_data.append(row_teb)
+    
+    # ========================================
+    # 5. CRD dette (Encours - Capacité de Remboursement de la Dette) - en K€
+    # ========================================
+    row_encours = ['CRD']
+    for _, row in df_sorted.iterrows():
+        if pd.notna(row.get('Encours (K€)')):
+            row_encours.append(f"{row['Encours (K€)']:,.0f}")
+        else:
+            row_encours.append('N/A')
+    tableau_data.append(row_encours)
+    
+    # ========================================
+    # 6. Désendettement E/C (Années) - Années de Désendettement
+    # Formule : Encours / CAF Brute
+    # ========================================
+    row_cd = ['Désendettement']
+    for _, row in df_sorted.iterrows():
+        encours = row.get('Encours (K€)')
+        caf_brute = row.get('Caf brute (K€)')
+        
+        if pd.notna(encours) and pd.notna(caf_brute) and caf_brute != 0:
+            cd_value = encours / caf_brute
+            row_cd.append(f"{cd_value:.2f}")
+        else:
+            row_cd.append('N/A')
+    tableau_data.append(row_cd)
 
+    # ========================================
+    # 7. Annuité annu - Annuité annuelle - en K€
+    # ========================================
+    row_annuite = ['Annuité']
+    for _, row in df_sorted.iterrows():
+        if pd.notna(row.get('Annuité (K€)')):
+            row_annuite.append(f"{row['Annuité (K€)']:,.0f}")
+        else:
+            row_annuite.append('N/A')
+    tableau_data.append(row_annuite)
+    
+    # ========================================
+    # 8. Consommation de la CAF par les emprunts annu/caf (%)
+    # Formule : Annuité / CAF Brute * 100
+    # ========================================
+    row_annuite_caf = ['Conso CAF par emprunts']
+    for _, row in df_sorted.iterrows():
+        if pd.notna(row.get('Annuité/CAF Commune (%)')):
+            annuite_caf_value = row['Annuité/CAF Commune (%)']
+            row_annuite_caf.append(f"{annuite_caf_value:.1f}%")
+        else:
+            row_annuite_caf.append('N/A')
+    tableau_data.append(row_annuite_caf)
+    
+    # ========================================
+    # 9. FdR fdr - Fonds de Roulement - Montant en K€
+    # Formule : (FDR jours * DRF) / 365
+    # ========================================
+    row_fdr = ['FdR brut']
+    for _, row in df_sorted.iterrows():
+        if pd.notna(row.get('FDR (K€)')):
+            row_fdr.append(f"{row['FDR (K€)']:,.0f}")
+        else:
+            row_fdr.append('N/A')
+    tableau_data.append(row_fdr)
+    
+    # ========================================
+    # 10. FdR Normatif - Fonds de Roulement Normatif - en jours
+    # Formule : FDR jours
+    # ========================================
+    row_fdr_normatif = ['FdR Normatif']
+    for _, row in df_sorted.iterrows():
+        if pd.notna(row.get('FDR Jours Commune')):
+            fdr_value = row['FDR Jours Commune']
+            # Colorer selon le seuil : > 240 jours = vert, 60-240 jours = orange, < 60 jours = rouge
+            if fdr_value > 240:
+                color = '🟢'
+            elif fdr_value > 60:
+                color = '🟠'
+            else:
+                color = '🔴'
+            row_fdr_normatif.append(f"{color} {fdr_value:.0f}j")
+        else:
+            row_fdr_normatif.append('N/A')
+    tableau_data.append(row_fdr_normatif)
+    
+    return tableau_data
 
 
 
@@ -3094,6 +3261,46 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         story.append(kpi_table)
         story.append(Spacer(1, 1*cm))
         
+        # ★★★ AJOUTER CES 4 LIGNES ★★★
+        tableau_data = create_financial_summary_table_exact(df_historical_kpi)
+        if tableau_data:
+            # Créer le tableau avec ReportLab
+            nb_colonnes = len(tableau_data[0])
+            largeur_label = 3.2*cm
+            largeur_annee = (A4[0] - 4*cm - largeur_label) / (nb_colonnes - 1)
+            colWidths = [largeur_label] + [largeur_annee] * (nb_colonnes - 1)
+                
+            table = Table(tableau_data, colWidths=colWidths)
+            table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), rl_colors.HexColor('#2C3E50')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), rl_colors.white),
+                    ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                    ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 8.5),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                    ('TOPPADDING', (0, 0), (-1, 0), 8),
+                    ('BACKGROUND', (0, 1), (0, -1), rl_colors.HexColor('#ECF0F1')),
+                    ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 1), (0, -1), 8.5),
+                    ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+                    ('VALIGN', (0, 1), (0, -1), 'MIDDLE'),
+                    ('LEFTPADDING', (0, 1), (0, -1), 6),
+                    ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
+                    ('VALIGN', (1, 1), (-1, -1), 'MIDDLE'),
+                    ('FONTSIZE', (1, 1), (-1, -1), 8),
+                    ('RIGHTPADDING', (1, 1), (-1, -1), 6),
+                    ('GRID', (0, 0), (-1, -1), 0.5, rl_colors.HexColor('#BDC3C7')),
+                    ('BOX', (0, 0), (-1, -1), 1.5, rl_colors.HexColor('#2C3E50')),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [rl_colors.white, rl_colors.HexColor('#F8F9FA')]),
+                    ('ROWHEIGHT', (0, 0), (-1, 0), 16),
+                    ('ROWHEIGHT', (0, 1), (-1, -1), 14),
+                ]))
+                
+            story.append(table)
+            story.append(Spacer(1, 0.3*cm))
+        
+        story.append(Spacer(1, 0.5*cm))
         story.append(PageBreak())
         
         # ========================================
@@ -3657,6 +3864,10 @@ def create_radar_plot_for_pdf(commune_data, df_filtered=None):
     )
     
     return fig
+
+
+
+
 
 # --- Fonction d'export Excel ---
 def create_excel_export(df_kpi):
