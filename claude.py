@@ -231,17 +231,17 @@ def fetch_communes(dep, an):
                         "Population": pop,
                         
                         # COMMUNE - en K€ (recalculé depuis €/hab × population)
-                        "RRF (K€)": (fprod * pop / 1000) if fprod else None,
-                        "DRF (K€)": (fcharge * pop / 1000) if fcharge else None,
-                        "Encours (K€)": (fdet2cal * pop / 1000) if fdet2cal else None,
-                        "Annuité (K€)": (fannu * pop / 1000) if fannu else None,
+                        "RRF (K€)": record.get("prod"),
+                        "DRF (K€)": record.get("charge"),
+                        "Encours (K€)": record.get("det2cal"),  # Encours déjà en K€
+                        "Annuité (K€)": record.get("annu"),  # Annuité déjà en K€
                         "FDR (K€)": record.get("fdr"),  # FDR déjà en K€
                         
                         # MOYENNE STRATE - en K€
-                        "RRF - Moy. strate (K€)": (mprod * pop / 1000) if mprod else None,
-                        "DRF - Moy. strate (K€)": (mcharge * pop / 1000) if mcharge else None,
-                        "Encours - Moy. strate (K€)": (mdet2cal * pop / 1000) if mdet2cal else None,
-                        "Annuité - Moy. strate (K€)": (mannu * pop / 1000) if mannu else None,
+                        "RRF - Moy. strate (K€)": record.get("mprod"),
+                        "DRF - Moy. strate (K€)": record.get("mcharge"),
+                        "Encours - Moy. strate (K€)": record.get("mdet2cal"),
+                        "Annuité - Moy. strate (K€)": record.get("mannu"),
                         
                         "Département": record.get("dep"),
                         
@@ -2719,8 +2719,8 @@ def create_financial_summary_table_exact(df_historical_kpi):
     if df_historical_kpi.empty:
         return None
     
-    # Trier par année DÉCROISSANTE (2024, 2023, ..., 2019)
-    df_sorted = df_historical_kpi.sort_values('Année', ascending=False).reset_index(drop=True)
+    # Trier par année croissante
+    df_sorted = df_historical_kpi.sort_values('Année', ascending=True).reset_index(drop=True)
     
     # Créer l'en-tête avec les années
     header = ['Indicateur']
@@ -2735,7 +2735,7 @@ def create_financial_summary_table_exact(df_historical_kpi):
     # ========================================
     # 1. RRF prod (Recettes Réelles de Fonctionnement) - en K€
     # ========================================
-    row_rrf = ['RRF']
+    row_rrf = ['Produits retraités des 013']
     for _, row in df_sorted.iterrows():
         if pd.notna(row.get('RRF (K€)')):
             row_rrf.append(f"{row['RRF (K€)']:,.0f}")
@@ -2746,7 +2746,7 @@ def create_financial_summary_table_exact(df_historical_kpi):
     # ========================================
     # 2. DRF charge (Dépenses Réelles de Fonctionnement) - en K€
     # ========================================
-    row_drf = ['DRF']
+    row_drf = ['Charges retraitées des 014']
     for _, row in df_sorted.iterrows():
         if pd.notna(row.get('DRF (K€)')):
             row_drf.append(f"{row['DRF (K€)']:,.0f}")
@@ -2781,7 +2781,7 @@ def create_financial_summary_table_exact(df_historical_kpi):
     # ========================================
     # 5. CRD dette (Encours - Capacité de Remboursement de la Dette) - en K€
     # ========================================
-    row_encours = ['CRD']
+    row_encours = ['Capital Restant Dû']
     for _, row in df_sorted.iterrows():
         if pd.notna(row.get('Encours (K€)')):
             row_encours.append(f"{row['Encours (K€)']:,.0f}")
@@ -2793,7 +2793,7 @@ def create_financial_summary_table_exact(df_historical_kpi):
     # 6. Désendettement E/C (Années) - Années de Désendettement
     # Formule : Encours / CAF Brute
     # ========================================
-    row_cd = ['Désendettement']
+    row_cd = ['Année(s) de Désendettement']
     for _, row in df_sorted.iterrows():
         encours = row.get('Encours (K€)')
         caf_brute = row.get('Caf brute (K€)')
@@ -2820,7 +2820,7 @@ def create_financial_summary_table_exact(df_historical_kpi):
     # 8. Consommation de la CAF par les emprunts annu/caf (%)
     # Formule : Annuité / CAF Brute * 100
     # ========================================
-    row_annuite_caf = ['Conso CAF par emprunts']
+    row_annuite_caf = ['Annuité / CAF Brute']
     for _, row in df_sorted.iterrows():
         if pd.notna(row.get('Annuité/CAF Commune (%)')):
             annuite_caf_value = row['Annuité/CAF Commune (%)']
@@ -2833,7 +2833,7 @@ def create_financial_summary_table_exact(df_historical_kpi):
     # 9. FdR fdr - Fonds de Roulement - Montant en K€
     # Formule : (FDR jours * DRF) / 365
     # ========================================
-    row_fdr = ['FdR brut']
+    row_fdr = ['Fonds de Roulement']
     for _, row in df_sorted.iterrows():
         if pd.notna(row.get('FDR (K€)')):
             row_fdr.append(f"{row['FDR (K€)']:,.0f}")
@@ -2845,7 +2845,7 @@ def create_financial_summary_table_exact(df_historical_kpi):
     # 10. FdR Normatif - Fonds de Roulement Normatif - en jours
     # Formule : FDR jours
     # ========================================
-    row_fdr_normatif = ['FdR Normatif']
+    row_fdr_normatif = ['FdR Normatif\n(Nb jrs Charges retraitées)']
     for _, row in df_sorted.iterrows():
         if pd.notna(row.get('FDR Jours Commune')):
             fdr_value = row['FDR Jours Commune']
@@ -3240,7 +3240,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
             # Fallback si df_historical_kpi est vide
             st.warning("⚠️ Données historiques insuffisantes pour le tableau KPI")
             kpi_data = [['INDICATEUR', 'COMMUNE', 'STRATE', 'SEUIL BON', 'STATUT']]
-        
+               
         kpi_table = Table(kpi_data, colWidths=[3.5*cm, 3.2*cm, 3.2*cm, 3*cm, 3*cm])
         kpi_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), rl_colors.HexColor('#1a1a1a')),
@@ -3260,42 +3260,35 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         
         story.append(kpi_table)
         story.append(Spacer(1, 1*cm))
-        
+
+        story.append(Paragraph("Tableau Récapitulatif", style_section))
+        story.append(Spacer(1, 0.5*cm))
+
         # ★★★ AJOUTER CES 4 LIGNES ★★★
         tableau_data = create_financial_summary_table_exact(df_historical_kpi)
         if tableau_data:
             # Créer le tableau avec ReportLab
             nb_colonnes = len(tableau_data[0])
-            largeur_label = 3.2*cm
-            largeur_annee = (A4[0] - 4*cm - largeur_label) / (nb_colonnes - 1)
+            largeur_label = 6*cm
+            largeur_annee = (A4[0] - 5*cm - largeur_label) / (nb_colonnes - 1)
             colWidths = [largeur_label] + [largeur_annee] * (nb_colonnes - 1)
                 
             table = Table(tableau_data, colWidths=colWidths)
             table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), rl_colors.HexColor('#2C3E50')),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), rl_colors.white),
-                    ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-                    ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, 0), 8.5),
-                    ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-                    ('TOPPADDING', (0, 0), (-1, 0), 8),
-                    ('BACKGROUND', (0, 1), (0, -1), rl_colors.HexColor('#ECF0F1')),
-                    ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 1), (0, -1), 8.5),
-                    ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-                    ('VALIGN', (0, 1), (0, -1), 'MIDDLE'),
-                    ('LEFTPADDING', (0, 1), (0, -1), 6),
-                    ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
-                    ('VALIGN', (1, 1), (-1, -1), 'MIDDLE'),
-                    ('FONTSIZE', (1, 1), (-1, -1), 8),
-                    ('RIGHTPADDING', (1, 1), (-1, -1), 6),
-                    ('GRID', (0, 0), (-1, -1), 0.5, rl_colors.HexColor('#BDC3C7')),
-                    ('BOX', (0, 0), (-1, -1), 1.5, rl_colors.HexColor('#2C3E50')),
-                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [rl_colors.white, rl_colors.HexColor('#F8F9FA')]),
-                    ('ROWHEIGHT', (0, 0), (-1, 0), 16),
-                    ('ROWHEIGHT', (0, 1), (-1, -1), 14),
-                ]))
+                ('BACKGROUND', (0, 0), (-1, 0), rl_colors.HexColor('#1a1a1a')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), rl_colors.white),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('TOPPADDING', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 1), (-1, -1), 10),
+                ('TOPPADDING', (0, 1), (-1, -1), 10),
+                ('GRID', (0, 0), (-1, -1), 0.5, rl_colors.HexColor('#e8e8e8')),
+                ('LINEBELOW', (0, 0), (-1, 0), 2, rl_colors.HexColor('#1a1a1a')),
+            ]))
                 
             story.append(table)
             story.append(Spacer(1, 0.3*cm))
