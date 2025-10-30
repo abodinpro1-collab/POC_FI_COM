@@ -3293,8 +3293,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
             story.append(table)
             story.append(Spacer(1, 0.3*cm))
         
-        story.append(Spacer(1, 0.5*cm))
-        story.append(PageBreak())
+        
         
         # ========================================
         # PAGE 4 : PROFIL FINANCIER (RADAR)
