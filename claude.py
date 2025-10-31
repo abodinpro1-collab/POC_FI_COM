@@ -2564,42 +2564,128 @@ def create_score_evolution_stacked_bar_seaborn(df_historical_kpi, commune_name):
 def create_tableau_normalisation(commune_data):
     """
     Crée un tableau montrant les AVANT/APRÈS normalisation
+    ✅ VERSION FINALE AVEC TOUS LES MESSAGES D'ALERTE
     """
+    try:
+        # ========================================
+        # HELPER FUNCTION pour accéder aux valeurs
+        # ========================================
+        def get_value(key):
+            try:
+                if isinstance(commune_data, pd.Series):
+                    return commune_data[key] if key in commune_data.index else None
+                else:
+                    return commune_data.get(key)
+            except:
+                return None
+        
+        # ========================================
+        # 1. TEB - Garder la valeur (même si négatif)
+        # ========================================
+        try:
+            teb_val = get_value('TEB (%)')
+            teb_brute_display = f"{teb_val:.1f}%" if pd.notna(teb_val) else "N/A"
+        except:
+            teb_brute_display = "N/A"
+        
+        # ========================================
+        # 2. CD - Gestion des négatifs
+        # ========================================
+        cd_commune = get_value('Années de Désendettement')
+        teb_brute = get_value('TEB (%)')
+        encours_brut = get_value('Encours (K€)')
+        caf_brute = get_value('Épargne brute (K€)')
+        
+        # SI TEB < 0, calculer le CD brut
+        if pd.notna(teb_brute) and teb_brute < 0 and pd.notna(encours_brut) and encours_brut > 0 and pd.notna(caf_brute) and caf_brute != 0:
+            cd_brut = encours_brut / caf_brute
+            cd_valeur_brute = f"🔴 Supérieur à 15 ans"
+        # SI CD est déjà négatif
+        elif pd.notna(cd_commune) and cd_commune < 0:
+            cd_valeur_brute = f"🔴 Supérieur à 15 ans"
+        else:
+            cd_valeur_brute = f"{cd_commune:.1f} ans" if pd.notna(cd_commune) else "N/A"
+        
+        # ========================================
+        # 3. ANNUITÉ/CAF - Gestion des négatifs
+        # ========================================
+        try:
+            annuite_val = get_value('Annuité / CAF (%)')
+            if pd.notna(annuite_val) and annuite_val < 0:
+                annuite_brute = f"🔴 Supérieur à 100%"
+            else:
+                annuite_brute = f"{annuite_val:.1f}%" if pd.notna(annuite_val) else "N/A"
+        except:
+            annuite_brute = "N/A"
+        
+        # ========================================
+        # 4. FDR - Normal (pas de négatifs attendus)
+        # ========================================
+        try:
+            fdr_val = get_value('FDR Jours Commune')
+            fdr_brute = f"{fdr_val:.0f}j" if pd.notna(fdr_val) else "N/A"
+        except:
+            fdr_brute = "N/A"
+        
+        # ========================================
+        # 5. RIGIDITÉ - Normal
+        # ========================================
+        try:
+            rigidite_val = get_value('Rigidité (%)')
+            rigidite_brute = f"{rigidite_val:.1f}%" if pd.notna(rigidite_val) else "N/A"
+        except:
+            rigidite_brute = "N/A"
+        
+        # ========================================
+        # NORMALISATION
+        # ========================================
+        norms = normaliser_indicateurs_pour_radar(commune_data)
+        
+        # ========================================
+        # CRÉATION DU TABLEAU
+        # ========================================
+        tableau = pd.DataFrame({
+            'Critère': [
+                'TEB (%)',
+                'Années Désendettement',
+                'Annuité/CAF (%)',
+                'FDR (jours)',
+                'Rigidité (%)'
+            ],
+            'Valeur Brute': [
+                teb_brute_display,
+                cd_valeur_brute,
+                annuite_brute,
+                fdr_brute,
+                rigidite_brute
+            ],
+            'Plage': [
+                '0-30%',
+                '0-15 ans',
+                '0-80%',
+                '0-240j',
+                '0-200%'
+            ],
+            'Normalisé (0-100)': [
+                f"{norms['TEB_norm']:.1f}",
+                f"{norms['CD_norm']:.1f}",
+                f"{norms['Annuité_CAF_norm']:.1f}",
+                f"{norms['FDR_norm']:.1f}",
+                f"{norms['Rigidité_norm']:.1f}"
+            ]
+        })
+        
+        return tableau
     
-    norms = normaliser_indicateurs_pour_radar(commune_data)
-    
-    tableau = pd.DataFrame({
-        'Critère': [
-            'TEB (%)',
-            'Années Désendettement',
-            'Annuité/CAF (%)',
-            'FDR (jours)',
-            'Rigidité (%)'
-        ],
-        'Valeur Brute': [
-            f"{commune_data['TEB (%)']:.1f}%",
-            f"{commune_data['Années de Désendettement']:.1f} ans",
-            f"{commune_data.get('Annuité / CAF (%)', 'N/A'):.1f}%" if pd.notna(commune_data.get('Annuité / CAF (%)')) else 'N/A',
-            f"{commune_data.get('FDR Jours Commune', 'N/A'):.0f}j" if pd.notna(commune_data.get('FDR Jours Commune')) else 'N/A',
-            f"{commune_data['Rigidité (%)']:.1f}%"
-        ],
-        'Plage': [
-            '0-30%',
-            '0-15 ans',
-            '0-80%',
-            '0-240j',
-            '0-200%'
-        ],
-        'Normalisé (0-100)': [
-            f"{norms['TEB_norm']:.1f}",
-            f"{norms['CD_norm']:.1f}",
-            f"{norms['Annuité_CAF_norm']:.1f}",
-            f"{norms['FDR_norm']:.1f}",
-            f"{norms['Rigidité_norm']:.1f}"
-        ]
-    })
-    
-    return tableau
+    except Exception as e:
+        st.error(f"❌ Erreur dans create_tableau_normalisation: {e}")
+        import traceback
+        st.error(traceback.format_exc())
+        return None
+
+
+# === À UTILISER ===
+
 
 # --- Fonction pour créer les tranches de population ---
 def create_population_brackets(df):
