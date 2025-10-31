@@ -1063,7 +1063,13 @@ def create_score_evolution_stacked_bar(df_historical_kpi, commune_name):
     for _, row in df.iterrows():
         if pd.notna(row.get('Annuité / CAF (%)')):
             annuite_caf = row.get('Annuité / CAF (%)')
-            if annuite_caf < 30:
+            
+            # ⭐ VALIDATION : Annuité/CAF négatif = 0 points
+            if annuite_caf < 0:
+                annuite_scores.append(0)  # 🔴 Aberrant
+            elif annuite_caf == 0:
+                annuite_scores.append(30)  # 🟢 Zéro = excellent
+            elif annuite_caf < 30:
                 annuite_scores.append(30)
             elif annuite_caf <= 50:
                 annuite_scores.append(30 - ((annuite_caf - 30) / 20) * 30)
@@ -1201,7 +1207,13 @@ def create_score_evolution_lines(df_historical_kpi, commune_name):
     for _, row in df.iterrows():
         if pd.notna(row.get('Annuité / CAF (%)')):
             annuite_caf = row.get('Annuité / CAF (%)')
-            if annuite_caf < 30:
+            
+            # ⭐ VALIDATION : Annuité/CAF négatif = 0 (aberrant)
+            if annuite_caf < 0:
+                annuite_norm.append(0)  # 🔴 Aberrant = pire score
+            elif annuite_caf == 0:
+                annuite_norm.append(100)  # 🟢 Zéro = excellent = 100
+            elif annuite_caf < 30:
                 annuite_norm.append(100)
             elif annuite_caf <= 50:
                 score_pts = 30 - ((annuite_caf - 30) / 20) * 30
@@ -1369,7 +1381,11 @@ def create_score_evolution_lines_seaborn(df_historical_kpi, commune_name):
         # Annuité/CAF
         if pd.notna(row.get('Annuité / CAF (%)')):
             annuite_caf = row.get('Annuité / CAF (%)')
-            if annuite_caf < 30:
+            if annuite_caf < 0:
+                annuite_norm.append(0)  # 🔴 Aberrant = pire score
+            elif annuite_caf == 0:
+                annuite_norm.append(100)  # 🟢 Zéro = excellent = 100
+            elif annuite_caf < 30:
                 annuite_norm.append(100)
             elif annuite_caf <= 50:
                 score_pts = 30 - ((annuite_caf - 30) / 20) * 30
@@ -1855,17 +1871,31 @@ def score_sante_financiere_v3(row, df_ref):
     
     # 3. RATIO ANNUITÉ / CAF BRUTE - 30 points
     # Nouveau : débute à 30% (au lieu de 50%)
+
+
+    # 3. RATIO ANNUITÉ / CAF BRUTE - 30 points
     if pd.notna(row['Annuité / CAF (%)']):
-        if row['Annuité / CAF (%)'] < 30:
+        annuite_caf_value = row['Annuité / CAF (%)']
+        
+        # 🔴 CAS 1 : VALEUR NÉGATIVE = DONNÉE ABERRANTE = 0 POINTS
+        if annuite_caf_value < 0:
+            score += 0  # Pas de points pour les données aberrantes
+        
+        # 🟢 CAS 2 : VALEUR NULLE = PAS D'ANNUITÉS = PLEIN SCORE (EXCELLENT)
+        elif annuite_caf_value == 0:
+            score += 30  # Plein score si pas d'annuités
+        
+        # 🟢 CAS 3 : VALEUR POSITIVE NORMALE
+        elif annuite_caf_value < 30:
             score += 30  # Vert - plein score
-        elif row['Annuité / CAF (%)'] <= 50:
+        elif annuite_caf_value <= 50:
             # Interpolation linéaire entre 30% et 50%
-            score += 30 - ((row['Annuité / CAF (%)'] - 30) / 20) * 30
+            score += 30 - ((annuite_caf_value - 30) / 20) * 30
         else:
             # Au-dessus de 50% = 0 points
             score += 0
     else:
-        # Pas d'annuité = bonne situation
+        # Pas d'annuité = bonne situation (données manquantes)
         score += 30
     
     # 4. FONDS DE ROULEMENT EN JOURS - 20 points
@@ -1939,7 +1969,7 @@ def normaliser_indicateurs_pour_radar(row):
     - TEB : 0-30% (seuil vert à 15%)
     - Années de Désendettement : 0-15 ans (seuil vert < 8 ans)
     - Annuité/CAF : 0-80% (seuil vert < 50%)
-    - FDR : 0-300 jours (seuil vert > 240j)
+    - FDR : 0-240 jours (seuil vert > 240j)
     """
     
     # 1️⃣ TEB (%) - PLAGE 0-30%
@@ -1960,17 +1990,28 @@ def normaliser_indicateurs_pour_radar(row):
     else:
         cd_norm = 0 
     
-    # 3️⃣ ANNUITÉ/CAF (%) - PLAGE 0-80% (INVERSÉE)
+    # 3️⃣ ANNUITÉ/CAF (%) - PLAGE 0-80% (INVERSÉE) ⭐ CORRIGÉ
+    # ★ GESTION EXPLICITE DES NÉGATIFS ★
     if pd.notna(row['Annuité / CAF (%)']):
-        annuite_caf_value = min(row['Annuité / CAF (%)'], 80)
-        annuite_caf_norm = ((80 - annuite_caf_value) / 80) * 100
+        annuite_caf_value = row['Annuité / CAF (%)']
+        
+        # 🔴 SI NÉGATIF = ANOMALIE = NORMALISE À 0 (PIRE)
+        if annuite_caf_value < 0:
+            annuite_caf_norm = 0  # Score minimum pour les aberrances
+        # 🟢 SI ZÉRO = PAS D'ANNUITÉS = EXCELLENT = 100
+        elif annuite_caf_value == 0:
+            annuite_caf_norm = 100
+        else:
+            # Valeur positive : clamper à [0, 80]
+            annuite_caf_value = min(annuite_caf_value, 80)
+            annuite_caf_norm = ((80 - annuite_caf_value) / 80) * 100
     else:
-        annuite_caf_norm = 100
+        annuite_caf_norm = 100  # Pas de donnée = supposer bon
     
-    # 4️⃣ FDR - PLAGE 0-300 JOURS
+    # 4️⃣ FDR - PLAGE 0-3240 JOURS
     if pd.notna(row['FDR Jours Commune']):
-        fdr_value = min(row['FDR Jours Commune'], 300)
-        fdr_norm = (fdr_value / 300) * 100
+        fdr_value = min(row['FDR Jours Commune'], 240)
+        fdr_norm = (fdr_value / 240) * 100
     else:
         fdr_norm = 50
     
@@ -2002,7 +2043,7 @@ def create_radar_coherent(commune_data, df_filtered=None):
         'TEB (%) 0-30%',
         'Années Désendettement 0-15 ans',
         'Annuité/CAF (%) 0-80%',
-        'FDR (jours) 0-300j',
+        'FDR (jours) 0-240j',
         'Rigidité (%) inversion 0-200%'
     ]
     
@@ -2128,7 +2169,7 @@ def create_radar_seaborn(commune_data, df_filtered=None):
         'TEB (%)\n0-30%',
         'Annees Desendettement\n0-15 ans',
         'Annuite/CAF (%)\n0-80%',
-        'FDR (jours)\n0-300j',
+        'FDR (jours)\n0-240j',
         'Rigidite (%)\n0-200%'
     ]
     
@@ -2270,15 +2311,22 @@ def create_score_evolution_stacked_bar_seaborn(df_historical_kpi, commune_name):
             cd_scores.append(15)
         
         # Annuité/CAF (max 30 pts)
-        if pd.notna(row.get('Annuité / CAF (%)')):
-            annuite_caf = row.get('Annuité / CAF (%)')
-            if annuite_caf < 30:
+        annuite_caf = row.get('Annuité / CAF (%)')
+        if pd.notna(annuite_caf):
+            if annuite_caf < 0:
+                # 🔴 ANNUITÉ/CAF NÉGATIF = 0 POINTS (VALEUR ABERRANTE)
+                annuite_scores.append(0)
+            elif annuite_caf == 0:
+                # 🟢 ZÉRO = PAS D'ANNUITÉS = PLEIN SCORE
+                annuite_scores.append(30)
+            elif annuite_caf < 30:
                 annuite_scores.append(30)
             elif annuite_caf <= 50:
                 annuite_scores.append(30 - ((annuite_caf - 30) / 20) * 30)
             else:
                 annuite_scores.append(0)
         else:
+            # Pas de données = score optimiste
             annuite_scores.append(30)
         
         # FDR (max 20 pts)
@@ -2539,7 +2587,7 @@ def create_tableau_normalisation(commune_data):
             '0-30%',
             '0-15 ans',
             '0-80%',
-            '0-300j',
+            '0-240j',
             '0-200%'
         ],
         'Normalisé (0-100)': [
@@ -3257,17 +3305,40 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
                 ],
                 [
                     'CD (ans)',
-                    f"{data_actuelle['Années de Désendettement']:.1f}" if pd.notna(data_actuelle.get('Années de Désendettement')) else 'N/A',
+                    # ⭐ VALIDATION : Vérifier si négatif ou impossible
+                    (f"🔴 {data_actuelle['Années de Désendettement']:.1f}"
+                    if pd.notna(data_actuelle.get('Années de Désendettement')) and data_actuelle['Années de Désendettement'] < 0
+                    else f"⚠️ N/A (TEB invalide)"
+                    if pd.notna(data_actuelle.get('Années de Désendettement')) and data_actuelle['Années de Désendettement'] == 0
+                    else f"{data_actuelle['Années de Désendettement']:.1f}"
+                    if pd.notna(data_actuelle.get('Années de Désendettement'))
+                    else 'N/A'),
                     f"{data_actuelle['CD Strate (années)']:.1f}" if pd.notna(data_actuelle.get('CD Strate (années)')) else 'N/A',
                     '<8',
-                    'BON' if pd.notna(data_actuelle.get('Années de Désendettement')) and data_actuelle['Années de Désendettement'] < 8 else 'A SURVEILLER'
+                    # ⭐ STATUT avec validation
+                    ('CRITIQUE'
+                    if pd.notna(data_actuelle.get('Années de Désendettement')) and data_actuelle['Années de Désendettement'] < 0
+                    else 'CRITIQUE'
+                    if pd.notna(data_actuelle.get('Années de Désendettement')) and data_actuelle['Années de Désendettement'] == 0
+                    else 'BON'
+                    if pd.notna(data_actuelle.get('Années de Désendettement')) and data_actuelle['Années de Désendettement'] < 8
+                    else 'A SURVEILLER')
                 ],
                 [
                     'Annuite/CAF (%)',
-                    f"{data_actuelle['Annuité/CAF Commune (%)']:.1f}%" if pd.notna(data_actuelle.get('Annuité/CAF Commune (%)')) else 'N/A',
+                    (f"🔴 {data_actuelle['Annuité/CAF Commune (%)']:.1f}%" 
+                     if pd.notna(data_actuelle.get('Annuité/CAF Commune (%)')) and data_actuelle['Annuité/CAF Commune (%)'] < 0 
+                     else f"{data_actuelle['Annuité/CAF Commune (%)']:.1f}%" 
+                     if pd.notna(data_actuelle.get('Annuité/CAF Commune (%)')) 
+                     else 'N/A'),
                     f"{data_actuelle['Annuité/CAF Strate (%)']:.1f}%" if pd.notna(data_actuelle.get('Annuité/CAF Strate (%)')) else 'N/A',
                     '<50%',
-                    'BON' if pd.notna(data_actuelle.get('Annuité/CAF Commune (%)')) and data_actuelle['Annuité/CAF Commune (%)'] < 50 else 'A SURVEILLER'
+                    # ⭐ STATUT avec validation
+                    ('CRITIQUE' 
+                     if pd.notna(data_actuelle.get('Annuité/CAF Commune (%)')) and data_actuelle['Annuité/CAF Commune (%)'] < 0
+                     else 'BON' 
+                     if pd.notna(data_actuelle.get('Annuité/CAF Commune (%)')) and data_actuelle['Annuité/CAF Commune (%)'] < 50 
+                     else 'A SURVEILLER')
                 ],
                 [
                     'FDR (j)',
@@ -3410,7 +3481,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
             [
                 'FDR (jours)',
                 f"{commune_data.get('FDR Jours Commune', 0):.0f}j",
-                '0-300j',
+                '0-240j',
                 f"{norms['FDR_norm']:.1f}",
                 'Bon' if norms['FDR_norm'] > 80 else 'Acceptable' if norms['FDR_norm'] > 40 else 'Critique'
             ],
@@ -3701,7 +3772,7 @@ def create_radar_plot_matplotlib(commune_data, df_filtered=None):
         'TEB (%) 0-30%',
         'Années Désendettement\n0-15 ans',
         'Annuité/CAF (%)\n0-80%',
-        'FDR (jours)\n0-300j',
+        'FDR (jours)\n0-240j',
         'Rigidité (%)\ninversion 0-200%'
     ]
     
@@ -3790,7 +3861,7 @@ def create_radar_plot_for_pdf(commune_data, df_filtered=None):
         'TEB (%) 0-30%',
         'Années Désendettement 0-15 ans',
         'Annuité/CAF (%) 0-80%',
-        'FDR (jours) 0-300j',
+        'FDR (jours) 0-240j',
         'Rigidité (%) inversion 0-200%'
     ]
     
@@ -4024,7 +4095,7 @@ else:
             if pd.isna(encours) or encours <= 0:
                 return 0  # Pas de dette
             if pd.isna(epargne_brute) or epargne_brute <= 0:
-                return pd.NA  # Impossible si épargne <= 0 (inclut TEB négatif)
+                return 0  # Impossible si épargne <= 0 (inclut TEB négatif)
             return encours / epargne_brute
 
         df_kpi["Années de Désendettement"] = df_kpi.apply(
