@@ -1817,7 +1817,12 @@ def score_sante_financiere_v3(row, df_ref):
     - TEB : 20 points (>20% = vert, 10-20% = progressif, <10% = rouge)
     - CD : 30 points (<6 ans = vert, 6-16 ans = progressif, >16 ans = rouge)
     - Ratio Annuité/CAF : 30 points (<30% = vert, 30-50% = progressif, >50% = rouge)
-    - FDR en jours : 20 points (>240j = vert, 30-240j = progressif, <30j = rouge)
+    - FDR en jours : 20 points - NOUVEAUX SEUILS CLIENT :
+        * < 60 j : 0 pts (Rouge)
+        * 60-120 j : 5 pts (Rouge)
+        * 120-180 j : 10 pts (Orange)
+        * 180-240 j : 15 pts (Vert)
+        * > 240 j : 20 pts (Vert)
     """
     score = 0
     
@@ -1864,18 +1869,27 @@ def score_sante_financiere_v3(row, df_ref):
         score += 30
     
     # 4. FONDS DE ROULEMENT EN JOURS - 20 points
-    # Nouveau : débute à 30 jours (au lieu de 0), moyenne à partir de 70/75 jours
+    # ★ INTERPOLATION LINÉAIRE ENTRE 5 PALIERS CLIENTS ★
     if pd.notna(row['FDR Jours Commune']):
-        if row['FDR Jours Commune'] > 240:
-            score += 20  # Vert - plein score
-        elif row['FDR Jours Commune'] >= 70:
-            # Interpolation linéaire entre 70 et 240 jours
-            score += ((row['FDR Jours Commune'] - 70) / 170) * 20
-        elif row['FDR Jours Commune'] >= 30:
-            # Interpolation linéaire entre 30 et 70 jours
-            score += ((row['FDR Jours Commune'] - 30) / 40) * 10
+        fdr = row['FDR Jours Commune']
+        
+        if fdr >= 240:
+            # >= 240j : 20 pts (Vert excellent)
+            score += 20
+        elif fdr >= 180:
+            # 180-240j : interpolation 15 → 20 pts (Vert)
+            score += 15 + ((fdr - 180) / 60) * 5
+        elif fdr >= 120:
+            # 120-180j : interpolation 10 → 15 pts (Orange)
+            score += 10 + ((fdr - 120) / 60) * 5
+        elif fdr >= 60:
+            # 60-120j : interpolation 5 → 10 pts (Rouge)
+            score += 5 + ((fdr - 60) / 60) * 5
+        elif fdr > 0:
+            # 0-60j : interpolation 0 → 5 pts (Rouge critique)
+            score += (fdr / 60) * 5
         else:
-            # Sous 30 jours = 0 points
+            # Zéro ou négatif = 0 points
             score += 0
     else:
         # Données manquantes = score neutre (10 points)
@@ -2989,8 +3003,35 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         story.append(Spacer(1, 4*cm))
         story.append(Paragraph("<b>SANTE FINANCIERE</b>", style_titre_light))
         story.append(Paragraph("DES COMMUNES", style_titre))
+        story.append(Spacer(1, 0.8*cm))
+
+        logo_path = "logo.png"  # Adapter le chemin
+
+        if os.path.exists(logo_path):
+            try:
+                # Créer le logo avec dimensions adaptées
+                logo_img = Image(logo_path, width=10*cm, height=5*cm)
+                
+                # Centrer le logo dans une table
+                logo_table = Table([[logo_img]], colWidths=[16*cm])
+                logo_table.setStyle(TableStyle([
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ]))
+                
+                story.append(logo_table)
+                story.append(Spacer(1, 1*cm))
+            except Exception as e:
+                st.warning(f"⚠️ Logo non chargé : {e}")
+                story.append(Spacer(1, 1*cm))
+        else:
+            st.warning(f"⚠️ Logo non trouvé à : {logo_path}")
+            story.append(Spacer(1, 1*cm))
         story.append(Spacer(1, 0.5*cm))
         story.append(Paragraph("RAPPORT D'ANALYSE FINANCIERE - SCORING V3", style_sous_titre))
+        story.append(Paragraph("© 2025 SFP COLLECTIVITÉS.\nReproduction intégrale ou partielle interdite sauf autorisation écrite.\nFichier protégé — toute modification est strictement interdite", style_sous_titre))
+        
+        story.append(PageBreak())
         
         story.append(Spacer(1, 2*cm))
         story.append(Paragraph(f"<b>{commune_name.upper()}</b>", ParagraphStyle(
@@ -4913,7 +4954,8 @@ else:
 
 # Footer
 st.markdown("---")
-st.markdown("**📌 Nouveau système de scoring V2 - Données corrigées**")
+st.markdown("**📌 Nouveau système de scoring V3**")
 st.markdown("*Données : API des comptes individuels des communes - data.economie.gouv.fr*")
 st.markdown("*Scoring basé sur : TEB (20%), CD (30%), Annuité/CAF (30%), FDR (20%)*")
-st.markdown("*SFP COLLECTIVITES*")
+st.markdown("SFP COLLECTIVITÉS")
+st.markdown("**© 2025 SFP COLLECTIVITÉS. Reproduction intégrale ou partielle interdite sauf autorisation écrite. Fichier protégé — toute modification est strictement interdite**")
