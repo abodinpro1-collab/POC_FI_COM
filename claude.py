@@ -3402,7 +3402,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
                     f"{data_actuelle['CD Strate (années)']:.1f}" if pd.notna(data_actuelle.get('CD Strate (années)')) else 'N/A',
                     '<8',
                     # ⭐ STATUT avec validation
-                    ('CRITIQUE'
+                    ('ELEVE'
                     if pd.notna(data_actuelle.get('Années de Désendettement')) and data_actuelle['Années de Désendettement'] < 0
                     else 'CRITIQUE'
                     if pd.notna(data_actuelle.get('Années de Désendettement')) and data_actuelle['Années de Désendettement'] == 0
@@ -3538,42 +3538,108 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         story.append(Spacer(1, 0.2*cm))
         
         # Calculer les valeurs normalisees
+        def get_value(key):
+            try:
+                if isinstance(commune_data, pd.Series):
+                    return commune_data[key] if key in commune_data.index else None
+                else:
+                    return commune_data.get(key)
+            except:
+                return None
+
+        # Calculer les normes
         norms = normaliser_indicateurs_pour_radar(commune_data)
-        
-        # Tableau normalisation
+
+        # ========================================
+        # 1. TEB
+        # ========================================
+        try:
+            teb_val = get_value('TEB (%)')
+            teb_brute = f"{teb_val:.1f}%" if pd.notna(teb_val) else "N/A"
+        except:
+            teb_brute = "N/A"
+
+        # ========================================
+        # 2. CD - Gestion des négatifs
+        # ========================================
+        cd_commune = get_value('Années de Désendettement')
+        teb_brute_val = get_value('TEB (%)')
+        encours_brut = get_value('Encours (K€)')
+        caf_brute = get_value('Épargne brute (K€)')
+
+        if pd.notna(teb_brute_val) and teb_brute_val < 0 and pd.notna(encours_brut) and encours_brut > 0 and pd.notna(caf_brute) and caf_brute != 0:
+            cd_valeur_brute = f" Supérieur à 15 ans"
+        elif pd.notna(cd_commune) and cd_commune < 0:
+            cd_valeur_brute = f" Supérieur à 15 ans"
+        else:
+            cd_valeur_brute = f"{cd_commune:.1f} ans" if pd.notna(cd_commune) else "N/A"
+
+        # ========================================
+        # 3. ANNUITÉ/CAF
+        # ========================================
+        try:
+            annuite_val = get_value('Annuité / CAF (%)')
+            if pd.notna(annuite_val) and annuite_val < 0:
+                annuite_brute = f" Supérieur à 100%"
+            else:
+                annuite_brute = f"{annuite_val:.1f}%" if pd.notna(annuite_val) else "N/A"
+        except:
+            annuite_brute = "N/A"
+
+        # ========================================
+        # 4. FDR
+        # ========================================
+        try:
+            fdr_val = get_value('FDR Jours Commune')
+            fdr_brute = f"{fdr_val:.0f}j" if pd.notna(fdr_val) else "N/A"
+        except:
+            fdr_brute = "N/A"
+
+        # ========================================
+        # 5. RIGIDITÉ
+        # ========================================
+        try:
+            rigidite_val = get_value('Rigidité (%)')
+            rigidite_brute = f"{rigidite_val:.1f}%" if pd.notna(rigidite_val) else "N/A"
+        except:
+            rigidite_brute = "N/A"
+
+        # ========================================
+        # TABLEAU norm_data
+        # ========================================
         norm_data = [
             ['CRITERE', 'VALEUR BRUTE', 'PLAGE', 'NORMALISE (0-100)', 'INTERPRETATION'],
             [
                 'TEB (%)',
-                f"{commune_data['TEB (%)']:.1f}%",
+                teb_brute,
                 '0-30%',
                 f"{norms['TEB_norm']:.1f}",
                 'Bon' if norms['TEB_norm'] > 50 else 'A surveiller' if norms['TEB_norm'] > 25 else 'Faible'
             ],
             [
-                'Années Desendettement',
-                f"{commune_data.get('Années de Désendettement', 0):.1f} ans",
+                'Années\nDesendettement',
+                cd_valeur_brute,
                 '0-15 ans (inversee)',
                 f"{norms['CD_norm']:.1f}",
                 'Bon' if norms['CD_norm'] > 50 else 'A surveiller' if norms['CD_norm'] > 25 else 'Eleve'
             ],
             [
                 'Annuité/CAF (%)',
-                f"{commune_data.get('Annuité / CAF (%)', 0):.1f}%",
+                annuite_brute,
                 '0-80% (inversee)',
                 f"{norms['Annuité_CAF_norm']:.1f}",
                 'Bon' if norms['Annuité_CAF_norm'] > 50 else 'A surveiller' if norms['Annuité_CAF_norm'] > 25 else 'Critique'
             ],
             [
                 'FDR (jours)',
-                f"{commune_data.get('FDR Jours Commune', 0):.0f}j",
+                fdr_brute,
                 '0-240j',
                 f"{norms['FDR_norm']:.1f}",
                 'Bon' if norms['FDR_norm'] > 80 else 'Acceptable' if norms['FDR_norm'] > 40 else 'Critique'
             ],
             [
                 'Rigidité (%)',
-                f"{commune_data['Rigidité (%)']:.1f}%",
+                rigidite_brute,
                 '0-200% (inversee)',
                 f"{norms['Rigidité_norm']:.1f}",
                 'Bon' if norms['Rigidité_norm'] > 50 else 'A surveiller' if norms['Rigidité_norm'] > 25 else 'Eleve'
