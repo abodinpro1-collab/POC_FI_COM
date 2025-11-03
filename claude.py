@@ -4835,44 +4835,83 @@ else:
                 if fig_fdr:
                     st.plotly_chart(fig_fdr, use_container_width=True, key="evolution_fdr_chart")
             
-            # === TABLEAU RÉCAPITULATIF ===
-            st.markdown("---")
-            st.subheader("📋 Tableau récapitulatif pluriannuel")
+        # === TABLEAU RÉCAPITULATIF === (SOLUTION SIMPLIFIÉE)
+        st.markdown("---")
+        st.subheader("📋 Tableau récapitulatif pluriannuel")
+
+        colonnes_evolution = [
+            'Année', 'Population', 
+            'Score Commune',
+            'TEB Commune (%)', 'TEB Strate (%)',
+            'Années de Désendettement', 'CD Strate (années)', 
+            'Annuité/CAF Commune (%)', 'Annuité/CAF Strate (%)',
+            'FDR Jours Commune', 'FDR Jours Moyenne'
+        ]
+
+        # Vérifier quelles colonnes existent
+        colonnes_disponibles = [col for col in colonnes_evolution if col in df_historical_kpi.columns]
+
+        df_display = df_historical_kpi[colonnes_disponibles].round(2)
+
+        # Appliquer le style sans applymap (plus robuste)
+        def style_dataframe(df):
+            """Applique les styles conditionnels au dataframe"""
+            styled = df.copy()
             
-            colonnes_evolution = [
-                'Année', 'Population', 
-                'Score Commune',
-                'TEB Commune (%)', 'TEB Strate (%)',
-                'Années de Désendettement', 'CD Strate (années)', 
-                'Annuité/CAF Commune (%)', 'Annuité/CAF Strate (%)',
-                'FDR Jours Commune', 'FDR Jours Moyenne'
-            ]
+            # Créer les styles par colonne
+            styles = []
             
-            # Vérifier quelles colonnes existent
-            colonnes_disponibles = [col for col in colonnes_evolution if col in df_historical_kpi.columns]
+            for col in df.columns:
+                if col in ['TEB Commune (%)', 'TEB Strate (%)']:
+                    for i, val in enumerate(df[col]):
+                        if pd.notna(val):
+                            color = 'lightgreen' if val >= 20 else 'lightyellow' if val >= 10 else 'lightcoral'
+                            styles.append({'row': i, 'col': col, 'color': color})
+                
+                elif col in ['Années de Désendettement', 'CD Strate (années)']:
+                    for i, val in enumerate(df[col]):
+                        if pd.notna(val):
+                            color = 'lightcoral' if val > 16 else 'lightyellow' if val > 6 else 'lightgreen'
+                            styles.append({'row': i, 'col': col, 'color': color})
+                
+                elif col in ['Annuité/CAF Commune (%)', 'Annuité/CAF Strate (%)']:
+                    for i, val in enumerate(df[col]):
+                        if pd.notna(val):
+                            color = 'lightcoral' if val > 50 else 'lightyellow' if val > 30 else 'lightgreen'
+                            styles.append({'row': i, 'col': col, 'color': color})
+                
+                elif col in ['FDR Jours Commune', 'FDR Jours Moyenne']:
+                    for i, val in enumerate(df[col]):
+                        if pd.notna(val):
+                            color = 'lightgreen' if val > 240 else 'lightyellow' if val >= 70 else 'lightcoral'
+                            styles.append({'row': i, 'col': col, 'color': color})
+                
+                elif col == 'Score Commune':
+                    for i, val in enumerate(df[col]):
+                        if pd.notna(val):
+                            color = 'lightgreen' if val >= 75 else 'lightyellow' if val >= 50 else 'lightcoral'
+                            styles.append({'row': i, 'col': col, 'color': color})
             
-            df_display = df_historical_kpi[colonnes_disponibles].round(2)
+            # Construire les attributs de style
+            style_attr = []
+            for i in range(len(df)):
+                row_styles = []
+                for j, col in enumerate(df.columns):
+                    style = next((s for s in styles if s['row'] == i and s['col'] == col), None)
+                    if style:
+                        row_styles.append(f"background-color: {style['color']}")
+                    else:
+                        row_styles.append('')
+                style_attr.append(row_styles)
             
-            # Style conditionnel
-            def highlight_evolution(s):
-                if s.name in ['TEB Commune (%)', 'TEB Strate (%)']:
-                    return ['background-color: lightgreen' if x >= 20 else 'background-color: lightyellow' if x >= 10 else 'background-color: lightcoral' for x in s]
-                elif s.name in ['Années de Désendettement', 'CD Strate (années)']:
-                    return ['background-color: lightcoral' if x > 16 else 'background-color: lightyellow' if x > 6 else 'background-color: lightgreen' for x in s]
-                elif s.name in ['Annuité/CAF Commune (%)', 'Annuité/CAF Strate (%)']:
-                    return ['background-color: lightcoral' if x > 50 else 'background-color: lightyellow' if x > 30 else 'background-color: lightgreen' for x in s]
-                elif s.name in ['FDR Jours Commune', 'FDR Jours Moyenne']:
-                    return ['background-color: lightgreen' if x > 240 else 'background-color: lightyellow' if x >= 70 else 'background-color: lightcoral' for x in s]
-                elif s.name == 'Score Commune':
-                    return ['background-color: lightgreen' if x >= 75 else 'background-color: lightyellow' if x >= 50 else 'background-color: lightcoral' for x in s]
-                return ['' for x in s]
-            
-            styled_evolution = df_display.style.apply(highlight_evolution)
-            st.dataframe(styled_evolution, use_container_width=True)
-            
-        else:
-            st.warning(f"⚠️ Données historiques insuffisantes pour {commune_selectionnee} (moins de 2 années disponibles)")
-            st.info("💡 L'analyse pluriannuelle nécessite au moins 2 années de données consécutives")
+            return df.style.apply(
+                lambda s: [style_attr[i][j] if j < len(style_attr[i]) else '' 
+                        for j in range(len(s))],
+                axis=1
+            )
+
+        styled_evolution = style_dataframe(df_display)
+        st.dataframe(styled_evolution, use_container_width=True)
         
         # === EXPORT PDF ===
         st.markdown("---")
