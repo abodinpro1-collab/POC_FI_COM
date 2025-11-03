@@ -4835,7 +4835,7 @@ else:
                 if fig_fdr:
                     st.plotly_chart(fig_fdr, use_container_width=True, key="evolution_fdr_chart")
             
-        # === TABLEAU RÉCAPITULATIF === (SOLUTION SIMPLIFIÉE)
+            # === TABLEAU RÉCAPITULATIF AVEC STYLING ===
         st.markdown("---")
         st.subheader("📋 Tableau récapitulatif pluriannuel")
 
@@ -4851,67 +4851,100 @@ else:
         # Vérifier quelles colonnes existent
         colonnes_disponibles = [col for col in colonnes_evolution if col in df_historical_kpi.columns]
 
-        df_display = df_historical_kpi[colonnes_disponibles].round(2)
+        # Créer une copie clean
+        df_display = df_historical_kpi[colonnes_disponibles].copy()
+        df_display = df_display.reset_index(drop=True)
+        df_display = df_display.loc[:, ~df_display.columns.duplicated()].copy()
+        df_display = df_display.round(2)
 
-        # Appliquer le style sans applymap (plus robuste)
-        def style_dataframe(df):
-            """Applique les styles conditionnels au dataframe"""
-            styled = df.copy()
+        # Fonction de coloration SIMPLE et ROBUSTE
+        def color_cells(val, col_name):
+            """Retourne une couleur CSS basée sur la valeur et la colonne"""
             
-            # Créer les styles par colonne
-            styles = []
+            if pd.isna(val):
+                return 'background-color: #f0f0f0'
             
-            for col in df.columns:
-                if col in ['TEB Commune (%)', 'TEB Strate (%)']:
-                    for i, val in enumerate(df[col]):
-                        if pd.notna(val):
-                            color = 'lightgreen' if val >= 20 else 'lightyellow' if val >= 10 else 'lightcoral'
-                            styles.append({'row': i, 'col': col, 'color': color})
-                
-                elif col in ['Années de Désendettement', 'CD Strate (années)']:
-                    for i, val in enumerate(df[col]):
-                        if pd.notna(val):
-                            color = 'lightcoral' if val > 16 else 'lightyellow' if val > 6 else 'lightgreen'
-                            styles.append({'row': i, 'col': col, 'color': color})
-                
-                elif col in ['Annuité/CAF Commune (%)', 'Annuité/CAF Strate (%)']:
-                    for i, val in enumerate(df[col]):
-                        if pd.notna(val):
-                            color = 'lightcoral' if val > 50 else 'lightyellow' if val > 30 else 'lightgreen'
-                            styles.append({'row': i, 'col': col, 'color': color})
-                
-                elif col in ['FDR Jours Commune', 'FDR Jours Moyenne']:
-                    for i, val in enumerate(df[col]):
-                        if pd.notna(val):
-                            color = 'lightgreen' if val > 240 else 'lightyellow' if val >= 70 else 'lightcoral'
-                            styles.append({'row': i, 'col': col, 'color': color})
-                
-                elif col == 'Score Commune':
-                    for i, val in enumerate(df[col]):
-                        if pd.notna(val):
-                            color = 'lightgreen' if val >= 75 else 'lightyellow' if val >= 50 else 'lightcoral'
-                            styles.append({'row': i, 'col': col, 'color': color})
+            try:
+                val = float(val)
+            except (ValueError, TypeError):
+                return ''
             
-            # Construire les attributs de style
-            style_attr = []
-            for i in range(len(df)):
-                row_styles = []
-                for j, col in enumerate(df.columns):
-                    style = next((s for s in styles if s['row'] == i and s['col'] == col), None)
-                    if style:
-                        row_styles.append(f"background-color: {style['color']}")
-                    else:
-                        row_styles.append('')
-                style_attr.append(row_styles)
+            # TEB
+            if 'TEB' in col_name:
+                if val >= 20:
+                    return 'background-color: #90EE90'  # Vert clair
+                elif val >= 10:
+                    return 'background-color: #FFFFE0'  # Jaune clair
+                else:
+                    return 'background-color: #FFB6C6'  # Rose clair
             
-            return df.style.apply(
-                lambda s: [style_attr[i][j] if j < len(style_attr[i]) else '' 
-                        for j in range(len(s))],
-                axis=1
-            )
+            # Années de Désendettement / CD
+            elif 'Désendettement' in col_name or 'CD' in col_name:
+                if val <= 8:
+                    return 'background-color: #90EE90'
+                elif val <= 12:
+                    return 'background-color: #FFFFE0'
+                else:
+                    return 'background-color: #FFB6C6'
+            
+            # Annuité/CAF
+            elif 'Annuité' in col_name:
+                if val < 50:
+                    return 'background-color: #90EE90'
+                elif val < 60:
+                    return 'background-color: #FFFFE0'
+                else:
+                    return 'background-color: #FFB6C6'
+            
+            # FDR Jours
+            elif 'FDR' in col_name:
+                if val > 240:
+                    return 'background-color: #90EE90'
+                elif val >= 60:
+                    return 'background-color: #FFFFE0'
+                else:
+                    return 'background-color: #FFB6C6'
+            
+            # Score
+            elif 'Score' in col_name:
+                if val >= 75:
+                    return 'background-color: #90EE90'
+                elif val >= 50:
+                    return 'background-color: #FFFFE0'
+                else:
+                    return 'background-color: #FFB6C6'
+            
+            return ''
 
-        styled_evolution = style_dataframe(df_display)
-        st.dataframe(styled_evolution, use_container_width=True)
+        # Appliquer le styling avec une méthode robuste
+        try:
+            styled = df_display.style
+            
+            # Appliquer colonne par colonne pour éviter les conflits
+            for col in df_display.columns:
+                styled = styled.map(
+                    lambda val, col_name=col: color_cells(val, col_name),
+                    subset=[col]
+                )
+            
+            st.dataframe(styled, use_container_width=True)
+
+        except Exception as e:
+            st.warning(f"⚠️ Erreur d'affichage avec styles : {e}")
+            st.dataframe(df_display, use_container_width=True)
+
+        # Ajouter une légende
+        st.markdown("""
+        ### 📌 Guide d'interprétation :
+
+        | Indicateur | 🟢 Bon | 🟠 À surveiller | 🔴 Critique |
+        |---|---|---|---|
+        | **TEB (%)** | ≥ 20% | 10-20% | < 10% |
+        | **CD (années)** | ≤ 8 ans | 8-12 ans | > 12 ans |
+        | **Annuité/CAF (%)** | < 50% | 50-60% | ≥ 60% |
+        | **FDR (jours)** | > 240j | 60-240j | < 60j |
+        | **Score (/100)** | ≥ 75 | 50-75 | < 50 |
+        """)
         
         # === EXPORT PDF ===
         st.markdown("---")
