@@ -80,6 +80,8 @@ class RobustCommuneFetcher:
         patterns = [
             (r'^(LA|LE|LES)\s+(.+)$', r'\2 (\1)'),
             (r'^(.+)\s+\((LA|LE|LES)\)$', r'\2 \1'),
+            (r"^(L'|D')\s*(.+)$", r"\2 (\1)"),                # L'ILE-SAINT-DENIS → ILE-SAINT-DENIS (L')
+            (r"^(.+)\s*\((L'|D')\)$", r"\1 (\2)"),
         ]
         
         for pattern, replacement in patterns:
