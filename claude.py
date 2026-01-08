@@ -77,13 +77,21 @@ class RobustCommuneFetcher:
             return ""
         
         normalized = name.strip().upper()
+
+        # Remplacer les tirets avant D' ou L' par des espaces
+        normalized = re.sub(r"-([DL]')", r" \1", normalized)
+
         patterns = [
+            # Gestion des articles LA/LE/LES en début
             (r'^(LA|LE|LES)\s+(.+)$', r'\2 (\1)'),
-            (r'^(.+)\s+\((LA|LE|LES)\)$', r'\2 \1'),
-            (r"^(L'|D')\s*(.+)$", r"\2 (\1)"),                # L'ILE-SAINT-DENIS → ILE-SAINT-DENIS (L')
-            (r"^(.+)\s*\((L'|D')\)$", r"\1 (\2)"),
+            # Gestion des articles LA/LE/LES déjà entre parenthèses (avec espaces optionnels)
+            (r'^(.+)\s+\(\s*(LA|LE|LES)\s*\)$', r'\2 \1'),
+            # Gestion de L'/D' en début (seulement si pas déjà dans le nom)
+            (r"^(L'|D')(?!.*\s\1)(.+)$", r"\2 (\1)"),
+            # Gestion de L'/D' déjà entre parenthèses
+            (r"^(.+)\s*\(\s*(L'|D')\s*\)$", r"\1 (\2)"),
         ]
-        
+
         for pattern, replacement in patterns:
             normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
         
@@ -134,18 +142,56 @@ class RobustCommuneFetcher:
         return variants
     
     def _generate_search_terms(self, commune):
-        """Génère les termes de recherche"""
+        """Génère les termes de recherche avec toutes les variantes possibles"""
         terms = [commune]
-        
-        if commune.upper().startswith(('LA ', 'LE ', 'LES ')):
-            base = commune[3:] if commune.upper().startswith('LA ') else commune[4:] if commune.upper().startswith('LES ') else commune[3:]
-            terms.extend([base, f"{base} (LA)"])
-        
+        commune_upper = commune.upper()
+
+        # Variantes avec/sans tiret pour D' et L'
+        if " D'" in commune_upper or " L'" in commune_upper:
+            terms.append(re.sub(r"\s([DL]')", r"-\1", commune))
+        if "-D'" in commune_upper or "-L'" in commune_upper:
+            terms.append(re.sub(r"-([DL]')", r" \1", commune))
+
+        # Gestion des articles LA/LE/LES en début
+        if commune_upper.startswith(('LA ', 'LE ', 'LES ')):
+            if commune_upper.startswith('LA '):
+                base = commune[3:]
+                # Générer toutes les combinaisons : avec/sans tiret + avec/sans espace dans parenthèses
+                base_tiret = re.sub(r"\s([DL]')", r"-\1", base)
+                terms.extend([
+                    base, base_tiret,
+                    f"{base} (LA)", f"{base} (LA )",
+                    f"{base_tiret} (LA)", f"{base_tiret} (LA )"
+                ])
+            elif commune_upper.startswith('LE '):
+                base = commune[3:]
+                base_tiret = re.sub(r"\s([DL]')", r"-\1", base)
+                terms.extend([
+                    base, base_tiret,
+                    f"{base} (LE)", f"{base} (LE )",
+                    f"{base_tiret} (LE)", f"{base_tiret} (LE )"
+                ])
+            elif commune_upper.startswith('LES '):
+                base = commune[4:]
+                base_tiret = re.sub(r"\s([DL]')", r"-\1", base)
+                terms.extend([
+                    base, base_tiret,
+                    f"{base} (LES)", f"{base} (LES )",
+                    f"{base_tiret} (LES)", f"{base_tiret} (LES )"
+                ])
+
+        # Gestion des articles entre parenthèses
         if '(' in commune:
             base = re.sub(r'\s*\([^)]+\)\s*', '', commune).strip()
-            if '(LA)' in commune.upper():
-                terms.append(f"LA {base}")
-        
+            article_match = re.search(r'\(\s*(LA|LE|LES|L\'|D\')\s*\)', commune_upper)
+            if article_match:
+                article = article_match.group(1)
+                base_tiret = re.sub(r"\s([DL]')", r"-\1", base)
+                terms.extend([
+                    f"{article} {base}",
+                    f"{article} {base_tiret}"
+                ])
+
         return list(set(terms))
     
     def _is_similar_commune(self, search_commune, found_commune, threshold=0.8):
@@ -288,25 +334,39 @@ def fetch_historical_commune_data(commune_name, dep, years_range=[2019, 2020, 20
     
     # Trouve les variantes de la commune
     variants = fetcher.find_commune_variants(commune_name, dep)
-    
+
+    # Debug: afficher les termes de recherche générés
+    search_terms = fetcher._generate_search_terms(commune_name)
+    st.info(f"🔍 Termes de recherche générés: {', '.join(search_terms)}")
+
     if len(variants) > 1:
         variant_names = [v["nom"] for v in variants]
         st.info(f"🔍 Variantes détectées pour {commune_name}: {', '.join(set(variant_names))}")
+    else:
+        st.info(f"ℹ️ Aucune variante trouvée dans l'API, utilisation de: {variants[0]['nom']}")
     
     for year in years_range:
         try:
             df_year = fetch_communes(dep, year)
             if not df_year.empty:
                 commune_found = False
-                for variant in variants:
-                    commune_data = df_year[df_year['Commune'] == variant["nom"]]
+
+                # Debug: afficher les communes disponibles qui ressemblent au nom cherché
+                if year == years_range[0]:  # Seulement pour la première année
+                    matching_communes = df_year[df_year['Commune'].str.contains('CHAPELLE', case=False, na=False)]['Commune'].unique()
+                    if len(matching_communes) > 0:
+                        st.info(f"📋 Communes contenant 'CHAPELLE' en {year}: {', '.join(matching_communes[:10])}")
+
+                # Utiliser directement les search_terms pour la recherche
+                for term in search_terms:
+                    commune_data = df_year[df_year['Commune'] == term]
                     if not commune_data.empty:
                         historical_data.append(commune_data.iloc[0])
                         commune_found = True
                         break
-                
+
                 if not commune_found:
-                    st.warning(f"Commune {commune_name} non trouvée en {year}")
+                    st.warning(f"Commune {commune_name} non trouvée en {year}. Variantes testées: {search_terms}")
                     
         except Exception as e:
             st.warning(f"Données non disponibles pour {commune_name} en {year}")
