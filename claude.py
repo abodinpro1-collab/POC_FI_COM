@@ -8,6 +8,10 @@ from plotly.subplots import make_subplots
 import numpy as np
 import tempfile
 import os
+from dotenv import load_dotenv
+
+# Charger les variables d'environnement depuis .env
+load_dotenv()
 import time
 import uuid
 import base64
@@ -40,9 +44,40 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- AUTHENTIFICATION ---
+# Mot de passe stocké dans .env (fichier ignoré par git)
+APP_PASSWORD = os.getenv("APP_PASSWORD")
+
+def check_password():
+    """Vérifie si l'utilisateur est authentifié"""
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if st.session_state.authenticated:
+        return True
+
+    # Formulaire de connexion
+    st.markdown("## 🔐 Connexion requise")
+
+    with st.form("login_form"):
+        password = st.text_input("Mot de passe", type="password")
+        submit = st.form_submit_button("Se connecter")
+
+        if submit:
+            if password == APP_PASSWORD:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("❌ Mot de passe incorrect")
+
+    return False
+
+# Vérifier l'authentification avant d'afficher l'application
+if not check_password():
+    st.stop()
+
 # Clear session state au démarrage pour éviter les conflits
 if "initialized" not in st.session_state:
-    st.session_state.clear()
     st.session_state.initialized = True
 
 # Mapping des années vers les nouveaux datasets
