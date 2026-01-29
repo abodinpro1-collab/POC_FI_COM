@@ -1144,7 +1144,7 @@ def create_score_evolution_stacked_bar(df_historical_kpi, commune_name):
     # 2. CD contribution (0-30 points, normalisé à 0-100)
     cd_scores = []
     for _, row in df.iterrows():
-        if pd.notna(row.get('Années de Désendettement')) and row.get('Années de Désendettement') > 0:
+        if pd.notna(row.get('Années de Désendettement')) and row.get('Années de Désendettement') >= 0:
             cd_value = row.get('Années de Désendettement')
             if cd_value < 6:
                 cd_scores.append(30)
@@ -1287,7 +1287,7 @@ def create_score_evolution_lines(df_historical_kpi, commune_name):
     # 2. CD contribution (0-30 points, normalisé à 0-100)
     cd_norm = []
     for _, row in df.iterrows():
-        if pd.notna(row.get('Années de Désendettement')) and row.get('Années de Désendettement') > 0:
+        if pd.notna(row.get('Années de Désendettement')) and row.get('Années de Désendettement') >= 0:
             cd_value = row.get('Années de Désendettement')
             if cd_value < 6:
                 cd_norm.append(100)
@@ -1463,7 +1463,7 @@ def create_score_evolution_lines_seaborn(df_historical_kpi, commune_name):
             teb_norm.append(0)
         
         # CD
-        if pd.notna(row.get('Années de Désendettement')) and row.get('Années de Désendettement') > 0:
+        if pd.notna(row.get('Années de Désendettement')) and row.get('Années de Désendettement') >= 0:
             cd_value = row.get('Années de Désendettement')
             if cd_value < 6:
                 cd_norm.append(100)
@@ -1953,9 +1953,10 @@ def score_sante_financiere_v3(row, df_ref):
     
     # 2. CAPACITÉ DE DÉSENDETTEMENT (CD) - 30 points
     # Nouveau : débute à 6 ans (au lieu de 8), zéro à 16 ans (au lieu de 12)
-    if pd.notna(row['Années de Désendettement']) and row['Années de Désendettement'] > 0:
+    # 0 ans = pas de dette = meilleur score possible
+    if pd.notna(row['Années de Désendettement']) and row['Années de Désendettement'] >= 0:
         if row['Années de Désendettement'] < 6:
-            score += 30  # Vert - plein score
+            score += 30  # Vert - plein score (inclut 0 = pas de dette)
         elif row['Années de Désendettement'] <= 16:
             # Interpolation linéaire entre 6 et 16 ans
             score += 30 - ((row['Années de Désendettement'] - 6) / 10) * 30
@@ -1963,7 +1964,7 @@ def score_sante_financiere_v3(row, df_ref):
             # Au-dessus de 16 ans = 0 points
             score += 0
     else:
-        # Pas de dette ou données manquantes = score neutre
+        # Données manquantes = score neutre
         score += 15
     
     # 3. RATIO ANNUITÉ / CAF BRUTE - 30 points
@@ -2081,11 +2082,12 @@ def normaliser_indicateurs_pour_radar(row):
         teb_norm = 0
     
     # 2️⃣ CD - PLAGE 0-15 ANS (INVERSÉE)
-    if pd.notna(row['Années de Désendettement']) and row['Années de Désendettement'] > 0:  # ✅ CLEF
+    # 0 ans = pas de dette = meilleur score (100%)
+    if pd.notna(row['Années de Désendettement']) and row['Années de Désendettement'] >= 0:
         cd_value = min(row['Années de Désendettement'], 15)
         cd_norm = ((15 - cd_value) / 15) * 100
     else:
-        cd_norm = 0 
+        cd_norm = 0
     
     # 3️⃣ ANNUITÉ/CAF (%) - PLAGE 0-80% (INVERSÉE) ⭐ CORRIGÉ
     # ★ GESTION EXPLICITE DES NÉGATIFS ★
@@ -2396,7 +2398,7 @@ def create_score_evolution_stacked_bar_seaborn(df_historical_kpi, commune_name):
             teb_scores.append(0)
         
         # CD (max 30 pts)
-        if pd.notna(row.get('Années de Désendettement')) and row.get('Années de Désendettement') > 0:
+        if pd.notna(row.get('Années de Désendettement')) and row.get('Années de Désendettement') >= 0:
             cd_value = row.get('Années de Désendettement')
             if cd_value < 6:
                 cd_scores.append(30)
@@ -4801,7 +4803,7 @@ else:
                 
                 # Normalisation des valeurs COMMUNE (0-100)
                 teb_norm = min(100, (commune_data['TEB (%)'] / 15) * 100)
-                if pd.notna(commune_data['Années de Désendettement']) and commune_data['Années de Désendettement'] > 0:
+                if pd.notna(commune_data['Années de Désendettement']) and commune_data['Années de Désendettement'] >= 0:
                     cd_norm = max(0, min(100, (12 - commune_data['Années de Désendettement']) / 12 * 100))
                 else:
                     cd_norm = 0
