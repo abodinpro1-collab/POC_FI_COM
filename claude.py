@@ -664,8 +664,8 @@ def create_evolution_charts(df_historical_kpi, commune_name):
         line=dict(color='#ff7f0e', width=2, dash='dash'),
         marker=dict(size=6)
     ))
-    fig_fdr.add_hline(y=240, line_dash="dot", line_color="green", annotation_text="Seuil bon (240j)")
-    fig_fdr.add_hline(y=60, line_dash="dot", line_color="red", annotation_text="Seuil critique (60j)")
+    fig_fdr.add_hline(y=180, line_dash="dot", line_color="green", annotation_text="Seuil bon (180j)")
+    fig_fdr.add_hline(y=30, line_dash="dot", line_color="red", annotation_text="Seuil critique (30j)")
     fig_fdr.update_layout(
         title="👥 Évolution du Fonds de Roulement",
         xaxis_title="Année",
@@ -851,12 +851,12 @@ def create_evolution_charts_seaborn(df_historical_kpi, commune_name):
         ax=ax
     )
     
-    ax.axhline(y=240, color='green', linestyle=':', linewidth=1.5, alpha=0.7)
-    ax.text(df_historical_kpi['Année'].min(), 245, 'Seuil bon (240j)', 
+    ax.axhline(y=180, color='green', linestyle=':', linewidth=1.5, alpha=0.7)
+    ax.text(df_historical_kpi['Année'].min(), 185, 'Seuil bon (180j)',
             color='green', fontsize=9, va='bottom')
-    
-    ax.axhline(y=60, color='red', linestyle=':', linewidth=1.5, alpha=0.7)
-    ax.text(df_historical_kpi['Année'].min(), 65, 'Seuil critique (60j)', 
+
+    ax.axhline(y=30, color='red', linestyle=':', linewidth=1.5, alpha=0.7)
+    ax.text(df_historical_kpi['Année'].min(), 35, 'Seuil critique (30j)',
             color='red', fontsize=9, va='bottom')
     
     ax.set_title("👥 Évolution du Fonds de Roulement", fontsize=14, fontweight='bold', pad=20)
@@ -1180,12 +1180,12 @@ def create_score_evolution_stacked_bar(df_historical_kpi, commune_name):
     for _, row in df.iterrows():
         if pd.notna(row.get('FDR Jours Commune')):
             fdr_jours = row.get('FDR Jours Commune')
-            if fdr_jours > 240:
+            if fdr_jours >= 180:
                 fdr_scores.append(20)
-            elif fdr_jours >= 70:
-                fdr_scores.append(((fdr_jours - 70) / 170) * 20)
+            elif fdr_jours >= 90:
+                fdr_scores.append(15 + ((fdr_jours - 90) / 90) * 5)
             elif fdr_jours >= 30:
-                fdr_scores.append(((fdr_jours - 30) / 40) * 10)
+                fdr_scores.append(((fdr_jours - 30) / 60) * 15)
             else:
                 fdr_scores.append(0)
         else:
@@ -1325,13 +1325,13 @@ def create_score_evolution_lines(df_historical_kpi, commune_name):
     for _, row in df.iterrows():
         if pd.notna(row.get('FDR Jours Commune')):
             fdr_jours = row.get('FDR Jours Commune')
-            if fdr_jours > 240:
+            if fdr_jours >= 180:
                 fdr_norm.append(100)
-            elif fdr_jours >= 70:
-                score_pts = ((fdr_jours - 70) / 170) * 20
+            elif fdr_jours >= 90:
+                score_pts = 15 + ((fdr_jours - 90) / 90) * 5
                 fdr_norm.append((score_pts / 20) * 100)
             elif fdr_jours >= 30:
-                score_pts = ((fdr_jours - 30) / 40) * 10
+                score_pts = ((fdr_jours - 30) / 60) * 15
                 fdr_norm.append((score_pts / 20) * 100)
             else:
                 fdr_norm.append(0)
@@ -1495,13 +1495,13 @@ def create_score_evolution_lines_seaborn(df_historical_kpi, commune_name):
         # FDR
         if pd.notna(row.get('FDR Jours Commune')):
             fdr_jours = row.get('FDR Jours Commune')
-            if fdr_jours > 240:
+            if fdr_jours >= 180:
                 fdr_norm.append(100)
-            elif fdr_jours >= 70:
-                score_pts = ((fdr_jours - 70) / 170) * 20
+            elif fdr_jours >= 90:
+                score_pts = 15 + ((fdr_jours - 90) / 90) * 5
                 fdr_norm.append((score_pts / 20) * 100)
             elif fdr_jours >= 30:
-                score_pts = ((fdr_jours - 30) / 40) * 10
+                score_pts = ((fdr_jours - 30) / 60) * 15
                 fdr_norm.append((score_pts / 20) * 100)
             else:
                 fdr_norm.append(0)
@@ -1839,8 +1839,8 @@ def create_evolution_details_seaborn(df_historical_kpi, commune_name):
             marker='o', linewidth=3, markersize=8, label=commune_name, color='#1f77b4')
     ax.plot(df_historical_kpi['Annee'], df_historical_kpi['FDR Jours Moyenne'],
             marker='s', linewidth=2, markersize=6, linestyle='--', label='Moyenne strate', color='#ff7f0e')
-    ax.axhline(y=240, color='green', linestyle=':', alpha=0.7)
-    ax.axhline(y=60, color='red', linestyle=':', alpha=0.7)
+    ax.axhline(y=180, color='green', linestyle=':', alpha=0.7)
+    ax.axhline(y=30, color='red', linestyle=':', alpha=0.7)
     ax.set_title('FDR - Fonds de Roulement', fontweight='bold')
     ax.set_ylabel('FDR (jours)', fontweight='bold')
     ax.legend(fontsize=9)
@@ -1930,12 +1930,11 @@ def score_sante_financiere_v3(row, df_ref):
     - TEB : 20 points (>20% = vert, 10-20% = progressif, <10% = rouge)
     - CD : 30 points (<6 ans = vert, 6-16 ans = progressif, >16 ans = rouge)
     - Ratio Annuité/CAF : 30 points (<30% = vert, 30-50% = progressif, >50% = rouge)
-    - FDR en jours : 20 points - NOUVEAUX SEUILS CLIENT :
-        * < 60 j : 0 pts (Rouge)
-        * 60-120 j : 5 pts (Rouge)
-        * 120-180 j : 10 pts (Orange)
-        * 180-240 j : 15 pts (Vert)
-        * > 240 j : 20 pts (Vert)
+    - FDR en jours : 20 points :
+        * < 30 j : 0 pts (Rouge)
+        * 30-90 j : interpolation 0→15 pts (Orange)
+        * 90-180 j : interpolation 15→20 pts (Vert)
+        * >= 180 j : 20 pts (Vert)
     """
     score = 0
     
@@ -1997,30 +1996,19 @@ def score_sante_financiere_v3(row, df_ref):
         score += 30
     
     # 4. FONDS DE ROULEMENT EN JOURS - 20 points
-    # ★ INTERPOLATION LINÉAIRE ENTRE 5 PALIERS CLIENTS ★
+    # < 30j = 0 pts | 30-90j = interpolation 0→15 | >= 90j = 15 pts | 90-180j = interpolation 15→20 | >= 180j = 20 pts
     if pd.notna(row['FDR Jours Commune']):
         fdr = row['FDR Jours Commune']
-        
-        if fdr >= 240:
-            # >= 240j : 20 pts (Vert excellent)
+
+        if fdr >= 180:
             score += 20
-        elif fdr >= 180:
-            # 180-240j : interpolation 15 → 20 pts (Vert)
-            score += 15 + ((fdr - 180) / 60) * 5
-        elif fdr >= 120:
-            # 120-180j : interpolation 10 → 15 pts (Orange)
-            score += 10 + ((fdr - 120) / 60) * 5
-        elif fdr >= 60:
-            # 60-120j : interpolation 5 → 10 pts (Rouge)
-            score += 5 + ((fdr - 60) / 60) * 5
-        elif fdr > 0:
-            # 0-60j : interpolation 0 → 5 pts (Rouge critique)
-            score += (fdr / 60) * 5
+        elif fdr >= 90:
+            score += 15 + ((fdr - 90) / 90) * 5
+        elif fdr >= 30:
+            score += ((fdr - 30) / 60) * 15
         else:
-            # Zéro ou négatif = 0 points
             score += 0
     else:
-        # Données manquantes = score neutre (10 points)
         score += 10
     
     return round(score, 2)
@@ -2067,7 +2055,7 @@ def normaliser_indicateurs_pour_radar(row):
     - TEB : 0-30% (seuil vert à 15%)
     - Années de Désendettement : 0-15 ans (seuil vert < 8 ans)
     - Annuité/CAF : 0-80% (seuil vert < 50%)
-    - FDR : 0-240 jours (seuil vert > 240j)
+    - FDR : 0-180 jours (seuil vert >= 180j)
     """
     
     # 1️⃣ TEB (%) - PLAGE 0-30%
@@ -2107,10 +2095,10 @@ def normaliser_indicateurs_pour_radar(row):
     else:
         annuite_caf_norm = 100  # Pas de donnée = supposer bon
     
-    # 4️⃣ FDR - PLAGE 0-3240 JOURS
+    # 4️⃣ FDR - PLAGE 0-180 JOURS
     if pd.notna(row['FDR Jours Commune']):
-        fdr_value = min(row['FDR Jours Commune'], 240)
-        fdr_norm = (fdr_value / 240) * 100
+        fdr_value = min(row['FDR Jours Commune'], 180)
+        fdr_norm = (fdr_value / 180) * 100
     else:
         fdr_norm = 50
     
@@ -2142,7 +2130,7 @@ def create_radar_coherent(commune_data, df_filtered=None):
         'TEB (%) 0-30%',
         'Années Désendettement 0-15 ans',
         'Annuité/CAF (%) 0-80%',
-        'FDR (jours) 0-240j',
+        'FDR (jours) 0-180j',
         'Rigidité (%) inversion 0-200%'
     ]
     
@@ -2159,7 +2147,7 @@ def create_radar_coherent(commune_data, df_filtered=None):
         (15 / 30) * 100,              # TEB : 50
         ((15 - 8) / 15) * 100,        # CD : 46.67
         ((80 - 50) / 80) * 100,       # Annuité : 37.5
-        (240 / 300) * 100,            # FDR : 80
+        (180 / 180) * 100,            # FDR : 100
         ((200 - 100) / 200) * 100     # Rigidité : 50
     ]
     
@@ -2268,7 +2256,7 @@ def create_radar_seaborn(commune_data, df_filtered=None):
         'TEB (%)\n0-30%',
         'Annees Desendettement\n0-15 ans',
         'Annuite/CAF (%)\n0-80%',
-        'FDR (jours)\n0-240j',
+        'FDR (jours)\n0-180j',
         'Rigidite (%)\n0-200%'
     ]
     
@@ -2285,7 +2273,7 @@ def create_radar_seaborn(commune_data, df_filtered=None):
         (15 / 30) * 100,              # TEB : 50
         ((15 - 8) / 15) * 100,        # CD : 46.67
         ((80 - 50) / 80) * 100,       # Annuite : 37.5
-        (240 / 300) * 100,            # FDR : 80
+        (180 / 180) * 100,            # FDR : 100
         ((200 - 100) / 200) * 100     # Rigidite : 50
     ]
     
@@ -2431,12 +2419,12 @@ def create_score_evolution_stacked_bar_seaborn(df_historical_kpi, commune_name):
         # FDR (max 20 pts)
         if pd.notna(row.get('FDR Jours Commune')):
             fdr_jours = row.get('FDR Jours Commune')
-            if fdr_jours > 240:
+            if fdr_jours >= 180:
                 fdr_scores.append(20)
-            elif fdr_jours >= 70:
-                fdr_scores.append(((fdr_jours - 70) / 170) * 20)
+            elif fdr_jours >= 90:
+                fdr_scores.append(15 + ((fdr_jours - 90) / 90) * 5)
             elif fdr_jours >= 30:
-                fdr_scores.append(((fdr_jours - 30) / 40) * 10)
+                fdr_scores.append(((fdr_jours - 30) / 60) * 15)
             else:
                 fdr_scores.append(0)
         else:
@@ -2762,7 +2750,7 @@ def create_tableau_normalisation(commune_data):
                 '0-30%',
                 '0-15 ans',
                 '0-80%',
-                '0-240j',
+                '0-180j',
                 '0-200%'
             ],
             'Normalisé (0-100)': [
@@ -2919,10 +2907,10 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
                 marker='o', linewidth=3, markersize=10, label=commune_name, color='#1f77b4')
         ax.plot(df_historical_kpi['Année'], df_historical_kpi['FDR Jours Moyenne'],
                 marker='s', linewidth=2, markersize=8, linestyle='--', label='Moy. strate', color='#ff7f0e')
-        ax.axhline(y=240, color='green', linestyle=':', linewidth=2, alpha=0.7)
-        ax.text(df_historical_kpi['Année'].min(), 245, 'Seuil bon (240j)', color='green', fontsize=10)
-        ax.axhline(y=60, color='red', linestyle=':', linewidth=2, alpha=0.7)
-        ax.text(df_historical_kpi['Année'].min(), 65, 'Seuil critique (60j)', color='red', fontsize=10)
+        ax.axhline(y=180, color='green', linestyle=':', linewidth=2, alpha=0.7)
+        ax.text(df_historical_kpi['Année'].min(), 185, 'Seuil bon (180j)', color='green', fontsize=10)
+        ax.axhline(y=30, color='red', linestyle=':', linewidth=2, alpha=0.7)
+        ax.text(df_historical_kpi['Année'].min(), 35, 'Seuil critique (30j)', color='red', fontsize=10)
         ax.set_title('👥 Évolution du Fonds de Roulement', fontsize=14, fontweight='bold', pad=15)
         ax.set_xlabel('Année', fontsize=12, fontweight='bold')
         ax.set_ylabel('FDR (jours de DRF)', fontsize=12, fontweight='bold')
@@ -3096,10 +3084,10 @@ def create_financial_summary_table_exact(df_historical_kpi):
     for _, row in df_sorted.iterrows():
         if pd.notna(row.get('FDR Jours Commune')):
             fdr_value = row['FDR Jours Commune']
-            # Colorer selon le seuil : > 240 jours = vert, 60-240 jours = orange, < 60 jours = rouge
-            if fdr_value > 240:
+            # Colorer selon le seuil : >= 180 jours = vert, 30-180 jours = orange, < 30 jours = rouge
+            if fdr_value >= 180:
                 color = '🟢'
-            elif fdr_value > 60:
+            elif fdr_value >= 30:
                 color = '🟠'
             else:
                 color = '🔴'
@@ -3400,7 +3388,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
                 'icon': '✓',
                 'text': f'<b>Desendettement maitrise :</b> Capacite de {cd:.1f} ans, en dessous du seuil critique.'
             })
-        if commune_data.get('FDR Jours Commune', 0) > 240:
+        if commune_data.get('FDR Jours Commune', 0) >= 180:
             insights.append({
                 'icon': '✓',
                 'text': f'<b>Tresorerie saine :</b> FDR de {commune_data.get("FDR Jours Commune", 0):.0f} jours assure une liquidite suffisante.'
@@ -3529,8 +3517,8 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
                     'FDR (j)',
                     f"{data_actuelle['FDR Jours Commune']:.0f}" if pd.notna(data_actuelle.get('FDR Jours Commune')) else 'N/A',
                     f"{data_actuelle['FDR Jours Moyenne']:.0f}" if pd.notna(data_actuelle.get('FDR Jours Moyenne')) else 'N/A',
-                    '>240',
-                    'BON' if pd.notna(data_actuelle.get('FDR Jours Commune')) and data_actuelle['FDR Jours Commune'] > 240 else 'A SURVEILLER'
+                    '>=180',
+                    'BON' if pd.notna(data_actuelle.get('FDR Jours Commune')) and data_actuelle['FDR Jours Commune'] >= 180 else 'A SURVEILLER'
                 ],
             ]
         else:
@@ -3732,7 +3720,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
             [
                 'FDR (jours)',
                 fdr_brute,
-                '0-240j',
+                '0-180j',
                 f"{norms['FDR_norm']:.1f}",
                 'Bon' if norms['FDR_norm'] > 80 else 'Acceptable' if norms['FDR_norm'] > 40 else 'Critique'
             ],
@@ -3940,7 +3928,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
             )))
             story.append(Paragraph(
                 "Nombre de jours de fonctionnement garantis par la tresorerie. "
-                "Seuil vert : >240 j | Seuil critique : <60 j",
+                "Seuil vert : >=180 j | Seuil critique : <30 j",
                 ParagraphStyle(
                     'Explanation',
                     parent=styles['Normal'],
@@ -4023,7 +4011,7 @@ def create_radar_plot_matplotlib(commune_data, df_filtered=None):
         'TEB (%) 0-30%',
         'Années Désendettement\n0-15 ans',
         'Annuité/CAF (%)\n0-80%',
-        'FDR (jours)\n0-240j',
+        'FDR (jours)\n0-180j',
         'Rigidité (%)\ninversion 0-200%'
     ]
     
@@ -4040,7 +4028,7 @@ def create_radar_plot_matplotlib(commune_data, df_filtered=None):
         (15 / 30) * 100,              # TEB : 50
         ((15 - 8) / 15) * 100,        # CD : 46.67
         ((80 - 50) / 80) * 100,       # Annuité : 37.5
-        (240 / 300) * 100,            # FDR : 80
+        (180 / 180) * 100,            # FDR : 100
         ((200 - 100) / 200) * 100     # Rigidité : 50
     ]
     
@@ -4112,7 +4100,7 @@ def create_radar_plot_for_pdf(commune_data, df_filtered=None):
         'TEB (%) 0-30%',
         'Années Désendettement 0-15 ans',
         'Annuité/CAF (%) 0-80%',
-        'FDR (jours) 0-240j',
+        'FDR (jours) 0-180j',
         'Rigidité (%) inversion 0-200%'
     ]
     
@@ -4129,7 +4117,7 @@ def create_radar_plot_for_pdf(commune_data, df_filtered=None):
         (15 / 30) * 100,              # TEB : 50
         ((15 - 8) / 15) * 100,        # CD : 46.67
         ((80 - 50) / 80) * 100,       # Annuité : 37.5
-        (240 / 300) * 100,            # FDR : 80
+        (180 / 180) * 100,            # FDR : 100
         ((200 - 100) / 200) * 100     # Rigidité : 50
     ]
     
@@ -4813,7 +4801,7 @@ else:
                     annuite_caf_norm = 100
                 
                 if pd.notna(commune_data.get('FDR Jours Commune')):
-                    fdr_norm = min(100, (commune_data['FDR Jours Commune'] / 240) * 100)
+                    fdr_norm = min(100, (commune_data['FDR Jours Commune'] / 180) * 100)
                 else:
                     fdr_norm = 50
                 
@@ -4838,7 +4826,7 @@ else:
                 cd_strate_norm = max(0, min(100, (12 - cd_strate) / 12 * 100))
                 rigidite_strate_norm = max(0, min(100, 200 - rigidite_strate))
                 annuite_caf_strate_norm = max(0, min(100, (60 - annuite_caf_strate) / 60 * 100))
-                fdr_strate_norm = min(100, (fdr_jours_strate / 240) * 100) if fdr_jours_strate > 0 else 50
+                fdr_strate_norm = min(100, (fdr_jours_strate / 180) * 100) if fdr_jours_strate > 0 else 50
                     
                                 # Radar cohérent avec VRAIES PLAGES
                 fig_radar_coherent = create_radar_coherent(commune_data, df_filtered)
@@ -5063,9 +5051,9 @@ else:
             
             # FDR Jours
             elif 'FDR' in col_name:
-                if val > 240:
+                if val >= 180:
                     return 'background-color: #90EE90'
-                elif val >= 60:
+                elif val >= 30:
                     return 'background-color: #FFFFE0'
                 else:
                     return 'background-color: #FFB6C6'
@@ -5107,7 +5095,7 @@ else:
         | **TEB (%)** | ≥ 20% | 10-20% | < 10% |
         | **CD (années)** | ≤ 8 ans | 8-12 ans | > 12 ans |
         | **Annuité/CAF (%)** | < 50% | 50-60% | ≥ 60% |
-        | **FDR (jours)** | > 240j | 60-240j | < 60j |
+        | **FDR (jours)** | >= 180j | 30-180j | < 30j |
         | **Score (/100)** | ≥ 75 | 50-75 | < 50 |
         """)
         
@@ -5208,9 +5196,9 @@ else:
                 st.markdown("- 🔴 Rouge : > 60%")
             with col4:
                 st.markdown("**FDR Jours** (20 pts)")
-                st.markdown("- 🟢 Vert : > 240j")
-                st.markdown("- 🟠 Orange : 60-240j")
-                st.markdown("- 🔴 Rouge : < 60j")
+                st.markdown("- 🟢 Vert : >= 180j")
+                st.markdown("- 🟠 Orange : 30-180j")
+                st.markdown("- 🔴 Rouge : < 30j")
         
         with tab2:
             st.dataframe(df_filtered, use_container_width=True)
@@ -5332,9 +5320,9 @@ else:
             
             # FDR
             if 'FDR Jours Commune' in df_filtered.columns:
-                fdr_vert = len(df_filtered[df_filtered['FDR Jours Commune'] > 240])
-                fdr_orange = len(df_filtered[(df_filtered['FDR Jours Commune'] >= 60) & (df_filtered['FDR Jours Commune'] <= 240)])
-                fdr_rouge = len(df_filtered[df_filtered['FDR Jours Commune'] < 60])
+                fdr_vert = len(df_filtered[df_filtered['FDR Jours Commune'] >= 180])
+                fdr_orange = len(df_filtered[(df_filtered['FDR Jours Commune'] >= 30) & (df_filtered['FDR Jours Commune'] < 180)])
+                fdr_rouge = len(df_filtered[df_filtered['FDR Jours Commune'] < 30])
             else:
                 fdr_vert = fdr_orange = fdr_rouge = 0
             
