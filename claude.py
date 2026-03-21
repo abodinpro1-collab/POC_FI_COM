@@ -247,7 +247,7 @@ st.markdown("---")
 st.sidebar.header("🔧 Paramètres d'analyse")
 
 # --- Liste des départements ---
-departements_dispo = [f"{i:03d}" for i in range(1, 101)] + ["2A", "2B"]
+departements_dispo = [f"{i:03d}" for i in range(1, 101)] + ["2A", "2B"] + ["101", "102", "103", "104", "105"]
 dept_selection = st.sidebar.selectbox("Département", departements_dispo, key="dept_select_unique")
 
 # --- Année ---
@@ -4213,6 +4213,121 @@ def create_radar_plot_for_pdf(commune_data, df_filtered=None):
 
 
 # --- Fonction d'export Excel ---
+def compute_kpis_for_scoring(df):
+    """Calcule les KPIs nécessaires au scoring sur un DataFrame de communes."""
+    df = df.copy()
+    df["TEB (%)"] = df["Épargne brute (K€)"] / df["RRF (K€)"].replace(0, pd.NA) * 100
+
+    def calc_annees_desendettement(encours, epargne_brute):
+        if pd.isna(encours) or encours <= 0:
+            return 0
+        if pd.isna(epargne_brute) or epargne_brute <= 0:
+            return 0
+        return encours / epargne_brute
+
+    df["Années de Désendettement"] = df.apply(
+        lambda row: calc_annees_desendettement(row["Encours (K€)"], row["Épargne brute (K€)"]), axis=1
+    )
+    df["Rigidité (%)"] = df["DRF (K€)"] / df["RRF (K€)"].replace(0, pd.NA) * 100
+    df["Annuité / CAF (%)"] = df["Annuité (K€)"] / df["Épargne brute (K€)"].replace(0, pd.NA) * 100
+
+    if 'FDR / hab Commune' in df.columns and 'DRF / hab Commune' in df.columns:
+        df['FDR Jours Commune'] = (
+            df['FDR / hab Commune'] / df['DRF / hab Commune'].replace(0, pd.NA) * 365
+        ).round(2)
+        df.loc[df['FDR Jours Commune'] > 1000, 'FDR Jours Commune'] = pd.NA
+    else:
+        df['FDR Jours Commune'] = pd.NA
+
+    return df
+
+
+def fetch_all_years_for_department(dep, years=None):
+    """Récupère et score toutes les communes d'un département pour chaque année."""
+    if years is None:
+        years = [2019, 2020, 2021, 2022, 2023, 2024]
+    frames = []
+    for an in years:
+        df = fetch_communes(dep, an)
+        if df is None or df.empty:
+            continue
+        df = compute_kpis_for_scoring(df)
+        df['Score'] = df.apply(score_sante_financiere_v3, axis=1, df_ref=df)
+        df['Année'] = an
+        frames.append(df[['Commune', 'Année', 'Score', 'Population']].copy())
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
+
+def create_excel_scores_pivot(dep, years=None):
+    """Génère un Excel pivot : communes en lignes, scores par année en colonnes."""
+    if years is None:
+        years = [2019, 2020, 2021, 2022, 2023, 2024]
+    df_long = fetch_all_years_for_department(dep, years)
+    if df_long.empty:
+        return None
+
+    # Pivot communes × années
+    df_pivot = df_long.pivot_table(index='Commune', columns='Année', values='Score', aggfunc='first')
+    df_pivot.columns = [f'Score {int(y)}' for y in df_pivot.columns]
+    df_pivot = df_pivot.reset_index().sort_values('Commune')
+
+    # Ajouter population de la dernière année disponible
+    pop_ref = df_long.sort_values('Année').drop_duplicates('Commune', keep='last')[['Commune', 'Population']]
+    df_pivot = df_pivot.merge(pop_ref, on='Commune', how='left')
+    cols = ['Commune', 'Population'] + [c for c in df_pivot.columns if c.startswith('Score')]
+    df_pivot = df_pivot[cols]
+
+    try:
+        import uuid
+        unique_name = f"scores_pivot_{uuid.uuid4().hex[:8]}.xlsx"
+        temp_path = os.path.join(tempfile.gettempdir(), unique_name)
+
+        with pd.ExcelWriter(temp_path, engine='xlsxwriter') as writer:
+            df_pivot.to_excel(writer, sheet_name='Scores_par_annee', index=False)
+            workbook = writer.book
+            worksheet = writer.sheets['Scores_par_annee']
+
+            # Formats couleur
+            fmt_vert   = workbook.add_format({'bg_color': '#90EE90', 'num_format': '0.0'})
+            fmt_orange = workbook.add_format({'bg_color': '#FFD580', 'num_format': '0.0'})
+            fmt_rouge  = workbook.add_format({'bg_color': '#FFB6C6', 'num_format': '0.0'})
+            fmt_header = workbook.add_format({'bold': True, 'bg_color': '#4472C4', 'font_color': 'white'})
+
+            score_cols = [i for i, c in enumerate(df_pivot.columns) if c.startswith('Score')]
+
+            # En-têtes
+            for col_idx, col_name in enumerate(df_pivot.columns):
+                worksheet.write(0, col_idx, col_name, fmt_header)
+
+            # Colorisation cellule par cellule
+            for row_idx, row in enumerate(df_pivot.itertuples(index=False), start=1):
+                for col_idx in score_cols:
+                    val = row[col_idx]
+                    if pd.isna(val):
+                        worksheet.write(row_idx, col_idx, '')
+                    elif val >= 75:
+                        worksheet.write(row_idx, col_idx, round(val, 1), fmt_vert)
+                    elif val >= 50:
+                        worksheet.write(row_idx, col_idx, round(val, 1), fmt_orange)
+                    else:
+                        worksheet.write(row_idx, col_idx, round(val, 1), fmt_rouge)
+
+            # Largeur colonnes
+            worksheet.set_column(0, 0, 30)  # Commune
+            worksheet.set_column(1, 1, 12)  # Population
+            worksheet.set_column(2, len(df_pivot.columns) - 1, 12)
+
+        with open(temp_path, 'rb') as f:
+            data = f.read()
+        os.unlink(temp_path)
+        return data
+
+    except Exception as e:
+        return None
+
+
 def create_excel_export(df_kpi):
     """Crée un fichier Excel à télécharger - Solution robuste Windows"""
     try:
@@ -5098,6 +5213,7 @@ else:
         | **FDR (jours)** | >= 180j | 30-180j | < 30j |
         | **Score (/100)** | ≥ 75 | 50-75 | < 50 |
         """)
+
         
         # === EXPORT PDF ===
         st.markdown("---")
@@ -5206,7 +5322,24 @@ else:
         # === EXPORT ===
         st.markdown("---")
         st.subheader("💾 Export des données")
-        
+
+        # Export scores toutes années
+        st.markdown("**📊 Scores département — toutes années**")
+        if st.button("Générer le tableau scores 2019-2024"):
+            with st.spinner("Récupération des données (2019-2024)..."):
+                excel_pivot = create_excel_scores_pivot(dept_selection)
+            if excel_pivot:
+                st.download_button(
+                    label="⬇️ Télécharger Excel scores 2019-2024",
+                    data=excel_pivot,
+                    file_name=f"scores_{dept_selection}_2019_2024.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                st.success("✅ Fichier prêt à télécharger")
+            else:
+                st.error("Aucune donnée disponible pour ce département.")
+
+        st.markdown("---")
         col1, col2 = st.columns(2)
         
         with col1:
