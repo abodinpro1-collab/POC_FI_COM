@@ -5288,7 +5288,7 @@ else:
                 else:
                     return 'background-color: #E6F7E6'
             
-            styled_df = df_filtered[colonnes_disponibles].style.applymap(color_niveau, subset=['Niveau d\'alerte'])
+            styled_df = df_filtered[colonnes_disponibles].style.map(color_niveau, subset=['Niveau d\'alerte'])
             st.dataframe(styled_df, use_container_width=True)
             
             # Légende des seuils
