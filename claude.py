@@ -35,6 +35,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import tempfile
 from math import pi
+from donnees_publiques import (
+    enrich_communes_with_public_data,
+    display_donnees_publiques_commune,
+    display_donnees_publiques_tableau,
+    get_donnees_publiques_pour_pdf,
+    fetch_dvf_commune,
+    fetch_potentiel_fiscal_financier,
+)
 
 
 # Configuration de la page
@@ -258,6 +266,14 @@ annee_selection = st.sidebar.selectbox("Année", annees_dispo, key="annee_select
 st.sidebar.subheader("🔍 Filtres")
 taille_min = st.sidebar.number_input("Population minimale", min_value=0, value=0, key="pop_min_unique")
 
+st.sidebar.subheader("📡 Données publiques")
+enrichir_donnees_publiques = st.sidebar.checkbox(
+    "Ajouter potentiel fiscal, financier & DVF",
+    value=False,
+    key="enrich_public_data",
+    help="Charge les données OFGL/DGCL et DVF Cerema (requiert connexion internet)"
+)
+
 # --- Fonction pour récupérer toutes les communes avec FDR (VERSION CORRIGÉE) ---
 @st.cache_data(ttl=3600)
 def fetch_communes(dep, an):
@@ -307,11 +323,21 @@ def fetch_communes(dep, an):
                     
                     pop = record.get("pop1") or 1
                     
+                    # Code INSEE complet (dep 2 derniers chiffres + icom 3 chiffres)
+                    dep_raw = record.get("dep") or ""
+                    icom_raw = record.get("icom") or ""
+                    if dep_raw and icom_raw:
+                        dep_short = str(dep_raw).lstrip("0") if str(dep_raw) not in ("02A", "02B") else str(dep_raw)[-2:]
+                        code_insee_full = f"{dep_short.zfill(2)}{str(icom_raw).zfill(3)}"
+                    else:
+                        code_insee_full = None
+
                     # Conversion €/hab → K€ pour compatibilité avec l'ancien code
                     rows.append({
                         "Commune": record.get("inom"),
                         "Année": record.get("an"),
                         "Population": pop,
+                        "code_insee": code_insee_full,
                         
                         # COMMUNE - en K€ (recalculé depuis €/hab × population)
                         "RRF (K€)": record.get("prod"),
@@ -370,38 +396,44 @@ def fetch_historical_commune_data(commune_name, dep, years_range=[2019, 2020, 20
     # Trouve les variantes de la commune
     variants = fetcher.find_commune_variants(commune_name, dep)
 
-    # Debug: afficher les termes de recherche générés
+    # Construire la liste de tous les noms candidats : variantes API + termes générés localement
     search_terms = fetcher._generate_search_terms(commune_name)
-    st.info(f"🔍 Termes de recherche générés: {', '.join(search_terms)}")
+    variant_names = [v["nom"] for v in variants]
+    # Fusion sans doublons, en préservant l'ordre (variantes API en premier car plus fiables)
+    candidate_names = list(dict.fromkeys(variant_names + search_terms))
 
     if len(variants) > 1:
-        variant_names = [v["nom"] for v in variants]
         st.info(f"🔍 Variantes détectées pour {commune_name}: {', '.join(set(variant_names))}")
     else:
         st.info(f"ℹ️ Aucune variante trouvée dans l'API, utilisation de: {variants[0]['nom']}")
-    
+
     for year in years_range:
         try:
             df_year = fetch_communes(dep, year)
             if not df_year.empty:
                 commune_found = False
 
-                # Debug: afficher les communes disponibles qui ressemblent au nom cherché
-                if year == years_range[0]:  # Seulement pour la première année
-                    matching_communes = df_year[df_year['Commune'].str.contains('CHAPELLE', case=False, na=False)]['Commune'].unique()
-                    if len(matching_communes) > 0:
-                        st.info(f"📋 Communes contenant 'CHAPELLE' en {year}: {', '.join(matching_communes[:10])}")
-
-                # Utiliser directement les search_terms pour la recherche
-                for term in search_terms:
+                # Tester d'abord une correspondance exacte sur tous les candidats
+                for term in candidate_names:
                     commune_data = df_year[df_year['Commune'] == term]
                     if not commune_data.empty:
                         historical_data.append(commune_data.iloc[0])
                         commune_found = True
                         break
 
+                # Fallback : comparaison normalisée (insensible aux tirets/espaces/casse)
                 if not commune_found:
-                    st.warning(f"Commune {commune_name} non trouvée en {year}. Variantes testées: {search_terms}")
+                    def _normalize(s):
+                        return re.sub(r'[\s\-\(\)\']+', '', str(s).upper())
+                    target_norms = {_normalize(t) for t in candidate_names}
+                    mask = df_year['Commune'].apply(lambda x: _normalize(x) in target_norms if pd.notna(x) else False)
+                    commune_data = df_year[mask]
+                    if not commune_data.empty:
+                        historical_data.append(commune_data.iloc[0])
+                        commune_found = True
+
+                if not commune_found:
+                    st.warning(f"Commune {commune_name} non trouvée en {year}. Candidats testés: {candidate_names}")
                     
         except Exception as e:
             st.warning(f"Données non disponibles pour {commune_name} en {year}")
@@ -2147,7 +2179,7 @@ def create_radar_coherent(commune_data, df_filtered=None):
         (15 / 30) * 100,              # TEB : 50
         ((15 - 8) / 15) * 100,        # CD : 46.67
         ((80 - 50) / 80) * 100,       # Annuité : 37.5
-        (180 / 180) * 100,            # FDR : 100
+        (120 / 180) * 100,            # FDR : 66.67 (seuil vert visuel à 120j)
         ((200 - 100) / 200) * 100     # Rigidité : 50
     ]
     
@@ -2273,7 +2305,7 @@ def create_radar_seaborn(commune_data, df_filtered=None):
         (15 / 30) * 100,              # TEB : 50
         ((15 - 8) / 15) * 100,        # CD : 46.67
         ((80 - 50) / 80) * 100,       # Annuite : 37.5
-        (180 / 180) * 100,            # FDR : 100
+        (120 / 180) * 100,            # FDR : 66.67 (seuil vert visuel à 120j)
         ((200 - 100) / 200) * 100     # Rigidite : 50
     ]
     
@@ -3546,6 +3578,101 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         story.append(kpi_table)
         story.append(Spacer(1, 1*cm))
 
+        # ── DONNÉES PUBLIQUES PDF ──────────────────────────────────────────
+        dp = get_donnees_publiques_pour_pdf(commune_data)
+
+        # Helper : test sûr pour pd.NA / None / NaN
+        def _has(v):
+            try:
+                return v is not None and pd.notna(v)
+            except (TypeError, ValueError):
+                return v is not None
+
+        if any(_has(v) for v in dp.values()):
+            dp_block = []
+            dp_block.append(Paragraph("DONNÉES PUBLIQUES COMPLÉMENTAIRES", style_section))
+            dp_block.append(Spacer(1, 0.3*cm))
+
+            annee_pot_str = f"DGCL/OFGL {int(dp['annee_potentiel'])}" if _has(dp['annee_potentiel']) else 'DGCL/OFGL'
+
+            dp_rows = [
+                ['INDICATEUR', 'VALEUR', 'SOURCE'],
+                [
+                    'Potentiel fiscal',
+                    f"{dp['potentiel_fiscal_hab']:,.0f} €/hab" if _has(dp['potentiel_fiscal_hab']) else 'N/D',
+                    annee_pot_str,
+                ],
+                [
+                    'Potentiel financier',
+                    f"{dp['potentiel_financier_hab']:,.0f} €/hab" if _has(dp['potentiel_financier_hab']) else 'N/D',
+                    annee_pot_str,
+                ],
+                [
+                    'Effort fiscal',
+                    f"{dp['effort_fiscal']:.3f}" if _has(dp['effort_fiscal']) else 'N/D',
+                    'DGCL/OFGL',
+                ],
+                [
+                    'Base TFB (valeur locative cadastrale)',
+                    f"{dp['base_tfb_ke']:,.0f} K€" if _has(dp['base_tfb_ke']) else 'N/D',
+                    'DGFiP REI via OFGL',
+                ],
+                [
+                    'DVF — Prix médian maison',
+                    (
+                        f"{dp['dvf_maison_m2']:,.0f} €/m²"
+                        + (f" ({int(dp['dvf_nb_maison'])} mutations)" if _has(dp['dvf_nb_maison']) else "")
+                    ) if _has(dp['dvf_maison_m2']) else 'N/D',
+                    'Cerema DVF+',
+                ],
+                [
+                    'DVF — Prix médian appartement',
+                    (
+                        f"{dp['dvf_appart_m2']:,.0f} €/m²"
+                        + (f" ({int(dp['dvf_nb_appart'])} mutations)" if _has(dp['dvf_nb_appart']) else "")
+                    ) if _has(dp['dvf_appart_m2']) else 'N/D',
+                    'Cerema DVF+',
+                ],
+            ]
+
+            dp_table = Table(dp_rows, colWidths=[6*cm, 5*cm, 5*cm])
+            dp_table.setStyle(TableStyle([
+                ('BACKGROUND',    (0, 0), (-1, 0), rl_colors.HexColor('#1a1a1a')),
+                ('TEXTCOLOR',     (0, 0), (-1, 0), rl_colors.white),
+                ('ALIGN',         (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME',      (0, 0), (-1, 0),  'Helvetica-Bold'),
+                ('FONTSIZE',      (0, 0), (-1, 0),  9),
+                ('FONTNAME',      (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE',      (0, 1), (-1, -1), 9),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('TOPPADDING',    (0, 0), (-1, -1), 8),
+                ('GRID',          (0, 0), (-1, -1), 0.5, rl_colors.HexColor('#e8e8e8')),
+                ('LINEBELOW',     (0, 0), (-1, 0),  2,   rl_colors.HexColor('#1a1a1a')),
+                ('ROWBACKGROUNDS',(0, 1), (-1, -1),
+                    [rl_colors.white, rl_colors.HexColor('#fafafa')])
+            ]))
+
+            dp_block.append(dp_table)
+            dp_block.append(Spacer(1, 0.3*cm))
+            dp_block.append(Paragraph(
+                "<b>Note :</b> Le potentiel fiscal mesure les recettes théoriques si les taux "
+                "moyens nationaux étaient appliqués. Le potentiel financier y ajoute les dotations "
+                "de péréquation. La base TFB est le proxy le plus direct de la valeur locative "
+                "cadastrale disponible en open data. Les prix DVF couvrent les 5 dernières années "
+                "de transactions.",
+                ParagraphStyle(
+                    'NoteDP',
+                    parent=styles['Normal'],
+                    fontName='Helvetica-Oblique',
+                    fontSize=8,
+                    textColor=rl_colors.HexColor('#999999'),
+                    spaceAfter=10
+                )
+            ))
+            dp_block.append(Spacer(1, 0.5*cm))
+            story.append(KeepTogether(dp_block))
+        # ──────────────────────────────────────────────────────────────────
+
         story.append(Paragraph("Tableau Récapitulatif", style_section))
         story.append(Spacer(1, 0.5*cm))
 
@@ -4028,7 +4155,7 @@ def create_radar_plot_matplotlib(commune_data, df_filtered=None):
         (15 / 30) * 100,              # TEB : 50
         ((15 - 8) / 15) * 100,        # CD : 46.67
         ((80 - 50) / 80) * 100,       # Annuité : 37.5
-        (180 / 180) * 100,            # FDR : 100
+        (120 / 180) * 100,            # FDR : 66.67 (seuil vert visuel à 120j)
         ((200 - 100) / 200) * 100     # Rigidité : 50
     ]
     
@@ -4117,7 +4244,7 @@ def create_radar_plot_for_pdf(commune_data, df_filtered=None):
         (15 / 30) * 100,              # TEB : 50
         ((15 - 8) / 15) * 100,        # CD : 46.67
         ((80 - 50) / 80) * 100,       # Annuité : 37.5
-        (180 / 180) * 100,            # FDR : 100
+        (120 / 180) * 100,            # FDR : 66.67 (seuil vert visuel à 120j)
         ((200 - 100) / 200) * 100     # Rigidité : 50
     ]
     
@@ -4268,13 +4395,42 @@ def create_excel_scores_pivot(dep, years=None):
     if df_long.empty:
         return None
 
-    # Pivot communes × années
-    df_pivot = df_long.pivot_table(index='Commune', columns='Année', values='Score', aggfunc='first')
+    # Normaliser les noms de communes pour fusionner les variantes orthographiques
+    # (ex : "ABERGEMENT CLEMENCIAT" et "ABERGEMENT-CLEMENCIAT (L')" → même commune)
+    def _normalize_name(s):
+        if pd.isna(s):
+            return ''
+        name = str(s).upper()
+        # Supprimer le contenu entre parenthèses (articles : (L'), (LA), (LE)...)
+        name = re.sub(r'\s*\([^)]*\)\s*', '', name)
+        # Supprimer les articles en préfixe ("L ", "L'", "LA ", "LE ", "LES ", "D'")
+        name = re.sub(r"^(L'|L\s|LA\s|LE\s|LES\s|D')", '', name)
+        # Supprimer tirets, espaces, apostrophes restants
+        name = re.sub(r"[\s\-']+", '', name)
+        return name
+
+    df_long = df_long.copy()
+    df_long['_commune_key'] = df_long['Commune'].apply(_normalize_name)
+
+    # Choisir un nom d'affichage unique par clé normalisée : le plus récent
+    df_sorted = df_long.sort_values('Année')
+    display_names = df_sorted.drop_duplicates('_commune_key', keep='last')[['_commune_key', 'Commune']]
+    display_names = display_names.rename(columns={'Commune': 'Commune_display'})
+
+    # Pivot sur la clé normalisée (et non sur le nom brut) pour ne pas dupliquer les lignes
+    df_pivot = df_long.pivot_table(index='_commune_key', columns='Année', values='Score', aggfunc='first')
     df_pivot.columns = [f'Score {int(y)}' for y in df_pivot.columns]
-    df_pivot = df_pivot.reset_index().sort_values('Commune')
+    df_pivot = df_pivot.reset_index()
+
+    # Remplacer la clé normalisée par le nom d'affichage
+    df_pivot = df_pivot.merge(display_names, on='_commune_key', how='left')
+    df_pivot = df_pivot.rename(columns={'Commune_display': 'Commune'}).drop(columns='_commune_key')
+    df_pivot = df_pivot.sort_values('Commune')
 
     # Ajouter population de la dernière année disponible
-    pop_ref = df_long.sort_values('Année').drop_duplicates('Commune', keep='last')[['Commune', 'Population']]
+    pop_ref = df_sorted.drop_duplicates('_commune_key', keep='last')[['_commune_key', 'Population']]
+    pop_ref = pop_ref.merge(display_names, on='_commune_key', how='left')
+    pop_ref = pop_ref.rename(columns={'Commune_display': 'Commune'})[['Commune', 'Population']]
     df_pivot = df_pivot.merge(pop_ref, on='Commune', how='left')
     cols = ['Commune', 'Population'] + [c for c in df_pivot.columns if c.startswith('Score')]
     df_pivot = df_pivot[cols]
@@ -4503,6 +4659,32 @@ else:
         else:
             df_kpi['FDR Jours Moyenne'] = pd.NA
         
+        # ── ENRICHISSEMENT DONNÉES PUBLIQUES ──────────────────────────────
+        if enrichir_donnees_publiques:
+            # DEBUG temporaire : vérifier la présence de code_insee avant enrichissement
+            with st.expander("🔧 Debug données publiques", expanded=False):
+                st.write(f"Département sélectionné : `{dept_selection}` | Année : `{annee_selection}`")
+                st.write(f"code_insee dans df_kpi : `{'code_insee' in df_kpi.columns}`")
+                if 'code_insee' in df_kpi.columns:
+                    st.write(f"Exemples code_insee : {df_kpi['code_insee'].head(3).tolist()}")
+                    st.write(f"Nb NA : {df_kpi['code_insee'].isna().sum()} / {len(df_kpi)}")
+                else:
+                    st.warning("⚠️ Colonne code_insee absente — vide le cache Streamlit (bouton '...' > Clear cache)")
+
+            df_kpi = enrich_communes_with_public_data(
+                df=df_kpi,
+                dep=dept_selection,
+                annee=annee_selection,
+                show_progress=True
+            )
+
+            with st.expander("🔧 Debug post-enrichissement", expanded=False):
+                cols_public = [c for c in df_kpi.columns if any(x in c for x in ['Potentiel', 'Effort', 'Base TFB', 'dvf'])]
+                st.write(f"Colonnes publiques ajoutées : {cols_public}")
+                if cols_public and len(df_kpi) > 0:
+                    st.dataframe(df_kpi[['Commune', 'code_insee'] + cols_public].head(5))
+        # ──────────────────────────────────────────────────────────────────
+
         # --- Calcul des scores V2 ---
         df_kpi['Score'] = df_kpi.apply(score_sante_financiere_v3, axis=1, df_ref=df_kpi)
         df_kpi['Niveau d\'alerte'] = df_kpi['Score'].apply(niveau_alerte_v3)
@@ -4953,6 +5135,29 @@ else:
                 tableau_norm = create_tableau_normalisation(commune_data)
                 st.dataframe(tableau_norm, use_container_width=True, hide_index=True)
                 
+                # ── DONNÉES PUBLIQUES ──────────────────────────────────────
+                if enrichir_donnees_publiques:
+                    display_donnees_publiques_commune(commune_data)
+
+                    # Fallback DVF individuel si le département n'a pas renvoyé de données
+                    if pd.isna(commune_data.get("dvf_prix_median_maison_m2")):
+                        code_insee_val = commune_data.get("code_insee")
+                        if pd.notna(code_insee_val):
+                            with st.spinner("Chargement DVF commune..."):
+                                dvf_ind = fetch_dvf_commune(str(code_insee_val).zfill(5))
+                            if dvf_ind:
+                                st.info(
+                                    f"DVF individuel — "
+                                    f"Maison : {dvf_ind.get('dvf_prix_median_maison_m2', 'N/D')} €/m² | "
+                                    f"Appart : {dvf_ind.get('dvf_prix_median_appart_m2', 'N/D')} €/m²"
+                                )
+                else:
+                    st.info(
+                        "💡 Activez **'Ajouter potentiel fiscal, financier & DVF'** "
+                        "dans la barre latérale pour afficher les données publiques."
+                    )
+                # ──────────────────────────────────────────────────────────
+
                 # Analyse comparative textuelle
                 st.markdown("**🎯 Analyse comparative vs strate officielle :**")
                 
@@ -5267,7 +5472,13 @@ else:
         # === TABLEAUX DÉTAILLÉS ===
         st.markdown("---")
         
-        tab1, tab2 = st.tabs(["📊 Tableau KPI complet", "📋 Données brutes"])
+        _tabs_labels = ["📊 Tableau KPI complet", "📋 Données brutes"]
+        if enrichir_donnees_publiques:
+            _tabs_labels.append("🏛️ Données publiques")
+
+        _tabs = st.tabs(_tabs_labels)
+        tab1 = _tabs[0]
+        tab2 = _tabs[1]
         
         with tab1:
             colonnes_kpi = [
@@ -5318,7 +5529,17 @@ else:
         
         with tab2:
             st.dataframe(df_filtered, use_container_width=True)
-        
+
+        if enrichir_donnees_publiques and len(_tabs) > 2:
+            with _tabs[2]:
+                st.markdown("### 🏛️ Potentiel fiscal, financier & valeur foncière")
+                st.caption(
+                    "Potentiel fiscal & financier : DGCL/OFGL — "
+                    "Base TFB : DGFiP REI — "
+                    "DVF : Cerema DVF+"
+                )
+                display_donnees_publiques_tableau(df_filtered)
+
         # === EXPORT ===
         st.markdown("---")
         st.subheader("💾 Export des données")
