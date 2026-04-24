@@ -88,6 +88,9 @@ if not check_password():
 if "initialized" not in st.session_state:
     st.session_state.initialized = True
 
+if "manual_2025_data" not in st.session_state:
+    st.session_state.manual_2025_data = {}
+
 # Mapping des années vers les nouveaux datasets
 DATASETS_MAPPING = {
     2019: "comptes-individuels-des-communes-fichier-global-2019-2020",
@@ -443,6 +446,52 @@ def fetch_historical_commune_data(commune_name, dep, years_range=[2019, 2020, 20
         df_historical = pd.DataFrame(historical_data)
         return df_historical
     return pd.DataFrame()
+
+# --- Fonctions pour la saisie manuelle des données 2025 ---
+
+def build_2025_row_from_manual_input(commune_name, dept, rrf, drf, caf, det2cal, annu, fdr, pop,
+                                      mprod=None, mcharge=None, mdet2cal=None, mannu=None, mfdr=None):
+    pop_safe = max(pop, 1)
+    return {
+        "Commune": commune_name,
+        "Année": 2025,
+        "Population": pop,
+        "Département": dept,
+        "code_insee": None,
+        "RRF (K€)": rrf,
+        "DRF (K€)": drf,
+        "Encours (K€)": det2cal,
+        "Annuité (K€)": annu,
+        "FDR (K€)": fdr,
+        "Épargne brute (K€)": caf,
+        "Caf brute (K€)": caf,
+        "RRF - Moy. strate (K€)": mprod,
+        "DRF - Moy. strate (K€)": mcharge,
+        "Encours - Moy. strate (K€)": mdet2cal,
+        "Annuité - Moy. strate (K€)": mannu,
+        "Épargne brute - Moy. strate (K€)": None,
+        "FDR / hab Commune": (fdr * 1000) / pop_safe,
+        "DRF / hab Commune": (drf * 1000) / pop_safe,
+        "RRF / hab Commune": (rrf * 1000) / pop_safe,
+        "Encours / hab Commune": (det2cal * 1000) / pop_safe,
+        "FDR / hab Moyenne": (mfdr * 1000 / pop_safe) if mfdr is not None else None,
+        "DRF / hab Moyenne": (mcharge * 1000 / pop_safe) if mcharge is not None else None,
+    }
+
+
+def inject_2025_into_historical(df_hist, row_2025):
+    df_hist = df_hist.copy()
+    df_hist["Année"] = pd.to_numeric(df_hist["Année"], errors="coerce")
+    df_hist = df_hist[df_hist["Année"] != 2025]
+    df_2025 = pd.DataFrame([row_2025])
+    for col in df_hist.columns:
+        if col not in df_2025.columns:
+            df_2025[col] = pd.NA
+    df_2025 = df_2025[df_hist.columns]
+    df_combined = pd.concat([df_hist, df_2025], ignore_index=True)
+    df_combined["Année"] = pd.to_numeric(df_combined["Année"], errors="coerce")
+    return df_combined.sort_values("Année").reset_index(drop=True)
+
 
 # --- Fonction utilitaire pour rechercher une commune ---
 def search_commune_in_department(commune_partial_name, dep, year=2023):
@@ -3498,13 +3547,21 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         if not df_historical_kpi.empty:
             # Prendre la DERNIÈRE année (année en cours)
             data_actuelle = df_historical_kpi.iloc[-1]
-            
+
+            # Pour la colonne STRATE, utiliser toujours la dernière année API disponible
+            # (2024 si des données 2025 manuelles ont été injectées en dernière position)
+            _annee_actuelle = pd.to_numeric(data_actuelle.get('Année', 0), errors='coerce')
+            if _annee_actuelle == 2025 and len(df_historical_kpi) >= 2:
+                data_strate = df_historical_kpi.iloc[-2]
+            else:
+                data_strate = data_actuelle
+
             kpi_data = [
                 ['INDICATEUR', 'COMMUNE', 'STRATE', 'SEUIL BON', 'STATUT'],
                 [
                     'TEB (%)',
                     f"{data_actuelle['TEB Commune (%)']:.1f}%" if pd.notna(data_actuelle.get('TEB Commune (%)')) else 'N/A',
-                    f"{data_actuelle['TEB Strate (%)']:.1f}%" if pd.notna(data_actuelle.get('TEB Strate (%)')) else 'N/A',
+                    f"{data_strate['TEB Strate (%)']:.1f}%" if pd.notna(data_strate.get('TEB Strate (%)')) else 'N/A',
                     '>15%',
                     'BON' if pd.notna(data_actuelle.get('TEB Commune (%)')) and data_actuelle['TEB Commune (%)'] > 15 else 'A SURVEILLER'
                 ],
@@ -3518,7 +3575,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
                     else f"{data_actuelle['Années de Désendettement']:.1f}"
                     if pd.notna(data_actuelle.get('Années de Désendettement'))
                     else 'N/A'),
-                    f"{data_actuelle['CD Strate (années)']:.1f}" if pd.notna(data_actuelle.get('CD Strate (années)')) else 'N/A',
+                    f"{data_strate['CD Strate (années)']:.1f}" if pd.notna(data_strate.get('CD Strate (années)')) else 'N/A',
                     '<8',
                     # ⭐ STATUT avec validation
                     ('ELEVE'
@@ -3531,24 +3588,24 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
                 ],
                 [
                     'Annuite/CAF (%)',
-                    (f"🔴 {data_actuelle['Annuité/CAF Commune (%)']:.1f}%" 
-                     if pd.notna(data_actuelle.get('Annuité/CAF Commune (%)')) and data_actuelle['Annuité/CAF Commune (%)'] < 0 
-                     else f"{data_actuelle['Annuité/CAF Commune (%)']:.1f}%" 
-                     if pd.notna(data_actuelle.get('Annuité/CAF Commune (%)')) 
+                    (f"🔴 {data_actuelle['Annuité/CAF Commune (%)']:.1f}%"
+                     if pd.notna(data_actuelle.get('Annuité/CAF Commune (%)')) and data_actuelle['Annuité/CAF Commune (%)'] < 0
+                     else f"{data_actuelle['Annuité/CAF Commune (%)']:.1f}%"
+                     if pd.notna(data_actuelle.get('Annuité/CAF Commune (%)'))
                      else 'N/A'),
-                    f"{data_actuelle['Annuité/CAF Strate (%)']:.1f}%" if pd.notna(data_actuelle.get('Annuité/CAF Strate (%)')) else 'N/A',
+                    f"{data_strate['Annuité/CAF Strate (%)']:.1f}%" if pd.notna(data_strate.get('Annuité/CAF Strate (%)')) else 'N/A',
                     '<50%',
                     # ⭐ STATUT avec validation
-                    ('CRITIQUE' 
+                    ('CRITIQUE'
                      if pd.notna(data_actuelle.get('Annuité/CAF Commune (%)')) and data_actuelle['Annuité/CAF Commune (%)'] < 0
-                     else 'BON' 
-                     if pd.notna(data_actuelle.get('Annuité/CAF Commune (%)')) and data_actuelle['Annuité/CAF Commune (%)'] < 50 
+                     else 'BON'
+                     if pd.notna(data_actuelle.get('Annuité/CAF Commune (%)')) and data_actuelle['Annuité/CAF Commune (%)'] < 50
                      else 'A SURVEILLER')
                 ],
                 [
                     'FDR (j)',
                     f"{data_actuelle['FDR Jours Commune']:.0f}" if pd.notna(data_actuelle.get('FDR Jours Commune')) else 'N/A',
-                    f"{data_actuelle['FDR Jours Moyenne']:.0f}" if pd.notna(data_actuelle.get('FDR Jours Moyenne')) else 'N/A',
+                    f"{data_strate['FDR Jours Moyenne']:.0f}" if pd.notna(data_strate.get('FDR Jours Moyenne')) else 'N/A',
                     '>=180',
                     'BON' if pd.notna(data_actuelle.get('FDR Jours Commune')) and data_actuelle['FDR Jours Commune'] >= 180 else 'A SURVEILLER'
                 ],
@@ -3901,7 +3958,8 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         # PAGE 5 : EVOLUTION PLURIANNUELLE
         # ========================================
         
-        story.append(Paragraph("EVOLUTION PLURIANNUELLE (2019-2024)", style_section))
+        _annee_fin_label = "2025" if "2025" in str(annee_selection) else "2024"
+        story.append(Paragraph(f"EVOLUTION PLURIANNUELLE (2019-{_annee_fin_label})", style_section))
         story.append(Spacer(1, 0.3*cm))
         
         # Score evolution
@@ -4381,10 +4439,59 @@ def fetch_all_years_for_department(dep, years=None):
         df = compute_kpis_for_scoring(df)
         df['Score'] = df.apply(score_sante_financiere_v3, axis=1, df_ref=df)
         df['Année'] = an
-        frames.append(df[['Commune', 'Année', 'Score', 'Population']].copy())
+        cols_keep = ['Commune', 'Année', 'Score', 'Population']
+        if 'code_insee' in df.columns:
+            cols_keep.insert(0, 'code_insee')
+        frames.append(df[cols_keep].copy())
     if not frames:
         return pd.DataFrame()
     return pd.concat(frames, ignore_index=True)
+
+
+def _normalize_commune_name(s):
+    """Normalise un nom de commune pour fusionner les variantes orthographiques."""
+    if pd.isna(s):
+        return ''
+    name = str(s).upper()
+    name = re.sub(r'\s*\([^)]*\)\s*', '', name)
+    name = re.sub(r"^(L'|L\s|LA\s|LE\s|LES\s|D')", '', name)
+    name = re.sub(r"[\s\-']+", '', name)
+    return name
+
+
+def _build_pivot(df_long):
+    """Construit un DataFrame pivot code_insee | Commune | Score 2019 … Score 2024."""
+    df_long = df_long.copy()
+    df_long['_commune_key'] = df_long['Commune'].apply(_normalize_commune_name)
+
+    df_sorted = df_long.sort_values('Année')
+    display_names = df_sorted.drop_duplicates('_commune_key', keep='last')[['_commune_key', 'Commune']]
+    display_names = display_names.rename(columns={'Commune': 'Commune_display'})
+
+    df_long['Score'] = pd.to_numeric(df_long['Score'], errors='coerce')
+
+    df_pivot = df_long.pivot_table(index='_commune_key', columns='Année', values='Score', aggfunc='first')
+    df_pivot.columns = [f'Score {int(y)}' for y in df_pivot.columns]
+    df_pivot = df_pivot.reset_index()
+
+    # Force score columns to float to avoid object-dtype issues with xlsxwriter
+    score_cols = [c for c in df_pivot.columns if c.startswith('Score')]
+    df_pivot[score_cols] = df_pivot[score_cols].apply(pd.to_numeric, errors='coerce')
+
+    df_pivot = df_pivot.merge(display_names, on='_commune_key', how='left')
+    df_pivot = df_pivot.rename(columns={'Commune_display': 'Commune'}).drop(columns='_commune_key')
+    df_pivot = df_pivot.sort_values('Commune')
+
+    if 'code_insee' in df_long.columns:
+        insee_ref = df_sorted.drop_duplicates('_commune_key', keep='last')[['_commune_key', 'code_insee']]
+        insee_ref = insee_ref.merge(display_names, on='_commune_key', how='left')
+        insee_ref = insee_ref.rename(columns={'Commune_display': 'Commune'})[['Commune', 'code_insee']]
+        df_pivot = df_pivot.merge(insee_ref, on='Commune', how='left')
+        cols = ['code_insee', 'Commune'] + [c for c in df_pivot.columns if c.startswith('Score')]
+    else:
+        cols = ['Commune'] + [c for c in df_pivot.columns if c.startswith('Score')]
+
+    return df_pivot[cols].reset_index(drop=True)
 
 
 def create_excel_scores_pivot(dep, years=None):
@@ -4395,45 +4502,10 @@ def create_excel_scores_pivot(dep, years=None):
     if df_long.empty:
         return None
 
-    # Normaliser les noms de communes pour fusionner les variantes orthographiques
-    # (ex : "ABERGEMENT CLEMENCIAT" et "ABERGEMENT-CLEMENCIAT (L')" → même commune)
-    def _normalize_name(s):
-        if pd.isna(s):
-            return ''
-        name = str(s).upper()
-        # Supprimer le contenu entre parenthèses (articles : (L'), (LA), (LE)...)
-        name = re.sub(r'\s*\([^)]*\)\s*', '', name)
-        # Supprimer les articles en préfixe ("L ", "L'", "LA ", "LE ", "LES ", "D'")
-        name = re.sub(r"^(L'|L\s|LA\s|LE\s|LES\s|D')", '', name)
-        # Supprimer tirets, espaces, apostrophes restants
-        name = re.sub(r"[\s\-']+", '', name)
-        return name
-
-    df_long = df_long.copy()
-    df_long['_commune_key'] = df_long['Commune'].apply(_normalize_name)
-
-    # Choisir un nom d'affichage unique par clé normalisée : le plus récent
-    df_sorted = df_long.sort_values('Année')
-    display_names = df_sorted.drop_duplicates('_commune_key', keep='last')[['_commune_key', 'Commune']]
-    display_names = display_names.rename(columns={'Commune': 'Commune_display'})
-
-    # Pivot sur la clé normalisée (et non sur le nom brut) pour ne pas dupliquer les lignes
-    df_pivot = df_long.pivot_table(index='_commune_key', columns='Année', values='Score', aggfunc='first')
-    df_pivot.columns = [f'Score {int(y)}' for y in df_pivot.columns]
-    df_pivot = df_pivot.reset_index()
-
-    # Remplacer la clé normalisée par le nom d'affichage
-    df_pivot = df_pivot.merge(display_names, on='_commune_key', how='left')
-    df_pivot = df_pivot.rename(columns={'Commune_display': 'Commune'}).drop(columns='_commune_key')
-    df_pivot = df_pivot.sort_values('Commune')
-
-    # Ajouter population de la dernière année disponible
-    pop_ref = df_sorted.drop_duplicates('_commune_key', keep='last')[['_commune_key', 'Population']]
-    pop_ref = pop_ref.merge(display_names, on='_commune_key', how='left')
-    pop_ref = pop_ref.rename(columns={'Commune_display': 'Commune'})[['Commune', 'Population']]
-    df_pivot = df_pivot.merge(pop_ref, on='Commune', how='left')
-    cols = ['Commune', 'Population'] + [c for c in df_pivot.columns if c.startswith('Score')]
-    df_pivot = df_pivot[cols]
+    df_pivot = _build_pivot(df_long)
+    for c in df_pivot.columns:
+        if c.startswith('Score'):
+            df_pivot[c] = pd.to_numeric(df_pivot[c], errors='coerce').astype(float)
 
     try:
         import uuid
@@ -4458,22 +4530,26 @@ def create_excel_scores_pivot(dep, years=None):
                 worksheet.write(0, col_idx, col_name, fmt_header)
 
             # Colorisation cellule par cellule
-            for row_idx, row in enumerate(df_pivot.itertuples(index=False), start=1):
+            for row_idx in range(len(df_pivot)):
                 for col_idx in score_cols:
-                    val = row[col_idx]
+                    val = df_pivot.iloc[row_idx, col_idx]
                     if pd.isna(val):
-                        worksheet.write(row_idx, col_idx, '')
+                        worksheet.write(row_idx + 1, col_idx, '')
                     elif val >= 75:
-                        worksheet.write(row_idx, col_idx, round(val, 1), fmt_vert)
+                        worksheet.write(row_idx + 1, col_idx, round(float(val), 1), fmt_vert)
                     elif val >= 50:
-                        worksheet.write(row_idx, col_idx, round(val, 1), fmt_orange)
+                        worksheet.write(row_idx + 1, col_idx, round(float(val), 1), fmt_orange)
                     else:
-                        worksheet.write(row_idx, col_idx, round(val, 1), fmt_rouge)
+                        worksheet.write(row_idx + 1, col_idx, round(float(val), 1), fmt_rouge)
 
             # Largeur colonnes
-            worksheet.set_column(0, 0, 30)  # Commune
-            worksheet.set_column(1, 1, 12)  # Population
-            worksheet.set_column(2, len(df_pivot.columns) - 1, 12)
+            if 'code_insee' in df_pivot.columns:
+                worksheet.set_column(0, 0, 12)  # code_insee
+                worksheet.set_column(1, 1, 30)  # Commune
+                worksheet.set_column(2, len(df_pivot.columns) - 1, 12)
+            else:
+                worksheet.set_column(0, 0, 30)  # Commune
+                worksheet.set_column(1, len(df_pivot.columns) - 1, 12)
 
         with open(temp_path, 'rb') as f:
             data = f.read()
@@ -4481,6 +4557,77 @@ def create_excel_scores_pivot(dep, years=None):
         return data
 
     except Exception as e:
+        return None
+
+
+def create_excel_scores_all_departments(years=None):
+    """Génère un Excel avec un onglet par département, scores par année + code_insee."""
+    if years is None:
+        years = [2019, 2020, 2021, 2022, 2023, 2024]
+
+    deps = [f"{i:03d}" for i in range(1, 96) if i != 20] + ["02A", "02B"]
+    deps += ["971", "972", "973", "974", "976"]
+
+    import uuid
+    unique_name = f"scores_tous_deps_{uuid.uuid4().hex[:8]}.xlsx"
+    temp_path = os.path.join(tempfile.gettempdir(), unique_name)
+
+    try:
+        with pd.ExcelWriter(temp_path, engine='xlsxwriter') as writer:
+            workbook = writer.book
+            fmt_header = workbook.add_format({'bold': True, 'bg_color': '#4472C4', 'font_color': 'white'})
+            fmt_vert   = workbook.add_format({'bg_color': '#90EE90', 'num_format': '0.0'})
+            fmt_orange = workbook.add_format({'bg_color': '#FFD580', 'num_format': '0.0'})
+            fmt_rouge  = workbook.add_format({'bg_color': '#FFB6C6', 'num_format': '0.0'})
+
+            for dep in deps:
+                df_long = fetch_all_years_for_department(dep, years)
+                if df_long.empty:
+                    continue
+
+                df_pivot = _build_pivot(df_long)
+                sheet_name = f"Dep_{dep}"[:31]
+
+                # Ensure score columns are float — xlsxwriter rejects object dtype
+                for c in df_pivot.columns:
+                    if c.startswith('Score'):
+                        df_pivot[c] = pd.to_numeric(df_pivot[c], errors='coerce').astype(float)
+
+                df_pivot.to_excel(writer, sheet_name=sheet_name, index=False)
+                ws = writer.sheets[sheet_name]
+
+                score_cols_idx = [i for i, c in enumerate(df_pivot.columns) if c.startswith('Score')]
+
+                for col_idx, col_name in enumerate(df_pivot.columns):
+                    ws.write(0, col_idx, col_name, fmt_header)
+
+                for row_idx in range(len(df_pivot)):
+                    for col_idx in score_cols_idx:
+                        val = df_pivot.iloc[row_idx, col_idx]
+                        if pd.isna(val):
+                            ws.write(row_idx + 1, col_idx, '')
+                        elif val >= 75:
+                            ws.write(row_idx + 1, col_idx, round(float(val), 1), fmt_vert)
+                        elif val >= 50:
+                            ws.write(row_idx + 1, col_idx, round(float(val), 1), fmt_orange)
+                        else:
+                            ws.write(row_idx + 1, col_idx, round(float(val), 1), fmt_rouge)
+
+                if 'code_insee' in df_pivot.columns:
+                    ws.set_column(0, 0, 12)
+                    ws.set_column(1, 1, 30)
+                    ws.set_column(2, len(df_pivot.columns) - 1, 12)
+                else:
+                    ws.set_column(0, 0, 30)
+                    ws.set_column(1, len(df_pivot.columns) - 1, 12)
+
+        with open(temp_path, 'rb') as f:
+            data = f.read()
+        os.unlink(temp_path)
+        return data
+
+    except Exception as e:
+        st.error(f"Erreur export tous départements : {e}")
         return None
 
 
@@ -5059,82 +5206,222 @@ else:
         
         if commune_selectionnee:
             commune_data = df_filtered[df_filtered['Commune'] == commune_selectionnee].iloc[0]
-            
+
+            # === SAISIE MANUELLE DONNÉES 2025 ===
+            _key_2025 = (commune_selectionnee, dept_selection)
+            _has_2025 = _key_2025 in st.session_state.manual_2025_data
+
+            with st.expander(
+                f"📝 Saisie manuelle des données 2025 — {commune_selectionnee}"
+                + (" ✅ (données enregistrées)" if _has_2025 else ""),
+                expanded=not _has_2025,
+            ):
+                st.markdown(
+                    "Saisissez ici les données financières 2025 de la commune. "
+                    "Elles seront intégrées aux graphiques d'évolution pluriannuelle et au scoring. "
+                )
+                st.info(
+                    "Les moyennes de strate 2025 sont automatiquement reprises depuis les valeurs 2024 "
+                    "de cette commune (elles ne sont pas à saisir)."
+                )
+
+                _saved = st.session_state.manual_2025_data.get(_key_2025, {})
+
+                def _get(key, fallback_col, default=0.0):
+                    if key in _saved:
+                        return _saved[key]
+                    v = commune_data.get(fallback_col)
+                    try:
+                        return float(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else default
+                    except Exception:
+                        return default
+
+                _def_rrf    = _get("rrf",    "RRF (K€)")
+                _def_drf    = _get("drf",    "DRF (K€)")
+                _def_caf    = _get("caf",    "Épargne brute (K€)")
+                _def_det    = _get("det2cal","Encours (K€)")
+                _def_annu   = _get("annu",   "Annuité (K€)")
+                _def_fdr    = _get("fdr",    "FDR (K€)")
+                _def_pop    = int(_saved.get("pop", commune_data.get("Population", 1) or 1))
+
+                with st.form("form_saisie_2025"):
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        inp_rrf  = st.number_input("Produits retraités des 013 — RRF (K€)",
+                                                   value=_def_rrf, min_value=0.0, step=10.0, format="%.1f")
+                        inp_drf  = st.number_input("Charges retraitées des 014 — DRF (K€)",
+                                                   value=_def_drf, min_value=0.0, step=10.0, format="%.1f")
+                        inp_caf  = st.number_input("CAF Brute (K€)",
+                                                   value=_def_caf, min_value=None, step=10.0, format="%.1f",
+                                                   help="Épargne brute réelle de la commune")
+                        inp_pop  = st.number_input("Population",
+                                                   value=_def_pop, min_value=1, step=1)
+                    with col_b:
+                        inp_det  = st.number_input("Capital Restant Dû — Encours (K€)",
+                                                   value=_def_det, min_value=0.0, step=10.0, format="%.1f")
+                        inp_annu = st.number_input("Annuité (K€)",
+                                                   value=_def_annu, min_value=0.0, step=1.0, format="%.1f")
+                        inp_fdr  = st.number_input("Fonds de Roulement — FDR (K€)",
+                                                   value=_def_fdr, min_value=None, step=10.0, format="%.1f")
+
+                    if inp_rrf > 0:
+                        teb_preview = inp_caf / inp_rrf * 100
+                        st.info(f"TEB estimé : **{teb_preview:.1f}%**  (CAF {inp_caf:.0f} K€ / RRF {inp_rrf:.0f} K€)")
+
+                    col_btn1, col_btn2, _ = st.columns([1, 1, 2])
+                    with col_btn1:
+                        submitted = st.form_submit_button("💾 Enregistrer les données 2025", type="primary")
+                    with col_btn2:
+                        clear = st.form_submit_button("🗑️ Effacer les données 2025", type="secondary")
+
+                if submitted:
+                    if inp_rrf <= 0:
+                        st.warning("RRF ne peut pas être 0 — veuillez saisir les Produits réels de fonctionnement.")
+                    else:
+                        _mprod  = float(commune_data.get("RRF - Moy. strate (K€)") or 0)
+                        _mchg   = float(commune_data.get("DRF - Moy. strate (K€)") or 0)
+                        _mdet   = float(commune_data.get("Encours - Moy. strate (K€)") or 0)
+                        _mann   = float(commune_data.get("Annuité - Moy. strate (K€)") or 0)
+                        _mfdr_v = commune_data.get("FDR / hab Moyenne")
+                        _mfdr_ke = float(_mfdr_v) * int(commune_data.get("Population", 1) or 1) / 1000 if _mfdr_v else None
+                        st.session_state.manual_2025_data[_key_2025] = {
+                            "commune_name": commune_selectionnee,
+                            "dept": dept_selection,
+                            "rrf":    inp_rrf,
+                            "drf":    inp_drf,
+                            "caf":    inp_caf,
+                            "det2cal": inp_det,
+                            "annu":   inp_annu,
+                            "fdr":    inp_fdr,
+                            "pop":    int(inp_pop),
+                            "mprod":  _mprod,
+                            "mcharge": _mchg,
+                            "mdet2cal": _mdet,
+                            "mannu":  _mann,
+                            "mfdr":   _mfdr_ke,
+                        }
+                        st.success("Données 2025 enregistrées. Les graphiques d'évolution incluent maintenant 2025.")
+                        st.rerun()
+
+                if clear and _has_2025:
+                    del st.session_state.manual_2025_data[_key_2025]
+                    st.info("Données 2025 effacées.")
+                    st.rerun()
+            # === FIN SAISIE MANUELLE 2025 ===
+
+            # Construction de commune_data_radar (avec KPI 2025 si saisie présente)
+            if _has_2025:
+                _d2025 = st.session_state.manual_2025_data[_key_2025]
+                _rrf25  = _d2025["rrf"]
+                _drf25  = _d2025["drf"]
+                _caf25  = _d2025["caf"]
+                _det25  = _d2025["det2cal"]
+                _annu25 = _d2025["annu"]
+                _fdr25  = _d2025["fdr"]
+                _teb25      = _caf25 / _rrf25 * 100 if _rrf25 > 0 else 0
+                _cd25       = _det25 / _caf25 if _caf25 > 0 else float("nan")
+                _acaf25     = _annu25 / _caf25 * 100 if _caf25 > 0 else float("nan")
+                _fdr_j25    = _fdr25 / _drf25 * 365 if _drf25 > 0 else float("nan")
+                _rigid25    = _drf25 / _rrf25 * 100 if _rrf25 > 0 else 0
+                _fdr_j25_capped = min(_fdr_j25, 1000) if not pd.isna(_fdr_j25) else float("nan")
+                commune_data_radar = commune_data.copy()
+                commune_data_radar["TEB (%)"]                  = _teb25
+                commune_data_radar["Années de Désendettement"] = _cd25
+                commune_data_radar["Annuité / CAF (%)"]        = _acaf25
+                commune_data_radar["FDR Jours Commune"]        = _fdr_j25_capped
+                commune_data_radar["Rigidité (%)"]             = _rigid25
+                commune_data_radar["RRF (K€)"]                 = _rrf25
+                commune_data_radar["DRF (K€)"]                 = _drf25
+                commune_data_radar["Épargne brute (K€)"]       = _caf25
+                commune_data_radar["Score"] = score_sante_financiere_v3({
+                    'TEB (%)': _teb25,
+                    'Années de Désendettement': _cd25,
+                    'Annuité / CAF (%)': _acaf25,
+                    'FDR Jours Commune': _fdr_j25_capped,
+                }, df_filtered)
+                commune_data_radar["Niveau d'alerte"] = niveau_alerte_v3(commune_data_radar["Score"])
+            else:
+                commune_data_radar = commune_data
+
             col1, col2 = st.columns([1, 2])
             
             with col1:
                 st.markdown(f"**Commune :** {commune_data['Commune']}")
                 st.markdown(f"**Population :** {commune_data['Population']:,} habitants")
-                st.markdown(f"**Score de santé :** {commune_data['Score']:.1f}/100")
-                st.markdown(f"**Niveau d'alerte :** {commune_data['Niveau d\'alerte']}")
-                
+                if _has_2025:
+                    st.caption("📝 Indicateurs calculés sur les données 2025 saisies manuellement")
+                st.markdown(f"**Score de santé :** {commune_data_radar['Score']:.1f}/100")
+                st.markdown(f"**Niveau d'alerte :** {commune_data_radar['Niveau d\'alerte']}")
                 st.markdown("---")
                 st.markdown("**📊 Indicateurs clés :**")
-                st.markdown(f"- TEB : {commune_data['TEB (%)']:.1f}%")
-                cd = commune_data['Années de Désendettement']
-                st.markdown(f"- **Années Désendettement :** {'Impossible (TEB négatif)' if pd.isna(cd) else f'{cd:.1f} ans'}")
-                if pd.notna(commune_data['Annuité / CAF (%)']):
-                    st.markdown(f"- Annuité/CAF : {commune_data['Annuité / CAF (%)']:.1f}%")
+                st.markdown(f"- TEB : {commune_data_radar['TEB (%)']:.1f}%")
+                cd = commune_data_radar['Années de Désendettement']
+                st.markdown(f"- **Années Désendettement :** {'Impossible (CAF négative)' if pd.isna(cd) else f'{cd:.1f} ans'}")
+                if pd.notna(commune_data_radar.get('Annuité / CAF (%)')):
+                    st.markdown(f"- Annuité/CAF : {commune_data_radar['Annuité / CAF (%)']:.1f}%")
                 else:
                     st.markdown(f"- Annuité/CAF : N/A")
-                if pd.notna(commune_data.get('FDR Jours Commune')):
-                    st.markdown(f"- FDR : {commune_data['FDR Jours Commune']:.0f} jours")
+                if pd.notna(commune_data_radar.get('FDR Jours Commune')):
+                    st.markdown(f"- FDR : {commune_data_radar['FDR Jours Commune']:.0f} jours")
                 else:
                     st.markdown(f"- FDR : Donnée non disponible")
             
             with col2:
+                if _has_2025:
+                    st.caption("📝 Radar calculé sur les données 2025 saisies manuellement.")
+
                 # Radar chart avec NOUVEAUX KPI
                 categories = ['TEB', 'CD inversée', 'Annuité/CAF inv.', 'FDR Jours', 'Rigidité inv.']
-                
+
                 # Normalisation des valeurs COMMUNE (0-100)
-                teb_norm = min(100, (commune_data['TEB (%)'] / 15) * 100)
-                if pd.notna(commune_data['Années de Désendettement']) and commune_data['Années de Désendettement'] >= 0:
-                    cd_norm = max(0, min(100, (12 - commune_data['Années de Désendettement']) / 12 * 100))
+                teb_norm = min(100, (commune_data_radar['TEB (%)'] / 15) * 100)
+                if pd.notna(commune_data_radar['Années de Désendettement']) and commune_data_radar['Années de Désendettement'] >= 0:
+                    cd_norm = max(0, min(100, (12 - commune_data_radar['Années de Désendettement']) / 12 * 100))
                 else:
                     cd_norm = 0
-                if pd.notna(commune_data.get('Annuité / CAF (%)')):
-                    annuite_caf_norm = max(0, min(100, (60 - commune_data['Annuité / CAF (%)']) / 60 * 100))
+                if pd.notna(commune_data_radar.get('Annuité / CAF (%)')):
+                    annuite_caf_norm = max(0, min(100, (60 - commune_data_radar['Annuité / CAF (%)']) / 60 * 100))
                 else:
                     annuite_caf_norm = 100
                 
-                if pd.notna(commune_data.get('FDR Jours Commune')):
-                    fdr_norm = min(100, (commune_data['FDR Jours Commune'] / 180) * 100)
+                if pd.notna(commune_data_radar.get('FDR Jours Commune')):
+                    fdr_norm = min(100, (commune_data_radar['FDR Jours Commune'] / 180) * 100)
                 else:
                     fdr_norm = 50
-                
-                rigidite_norm = max(0, min(100, 200 - commune_data['Rigidité (%)']))
-                
+
+                rigidite_norm = max(0, min(100, 200 - commune_data_radar['Rigidité (%)']))
+
                 # Calcul des KPI de la STRATE OFFICIELLE
-                epargne_strate = commune_data.get('Épargne brute - Moy. strate (K€)')
-                rrf_strate = commune_data.get('RRF - Moy. strate (K€)')
-                drf_strate = commune_data.get('DRF - Moy. strate (K€)')
-                encours_strate = commune_data.get('Encours - Moy. strate (K€)')
-                annuite_strate_val = commune_data.get('Annuité - Moy. strate (K€)')
-                
+                epargne_strate = commune_data_radar.get('Épargne brute - Moy. strate (K€)')
+                rrf_strate = commune_data_radar.get('RRF - Moy. strate (K€)')
+                drf_strate = commune_data_radar.get('DRF - Moy. strate (K€)')
+                encours_strate = commune_data_radar.get('Encours - Moy. strate (K€)')
+                annuite_strate_val = commune_data_radar.get('Annuité - Moy. strate (K€)')
+
                 # Ratios STRATE
                 teb_strate = (epargne_strate / rrf_strate * 100) if pd.notna(rrf_strate) and rrf_strate != 0 else 0
                 cd_strate = (encours_strate / epargne_strate) if pd.notna(epargne_strate) and epargne_strate != 0 else 0
                 rigidite_strate = (drf_strate / rrf_strate * 100) if pd.notna(rrf_strate) and rrf_strate != 0 else 0
                 annuite_caf_strate = (annuite_strate_val / epargne_strate * 100) if pd.notna(epargne_strate) and epargne_strate != 0 else 0
-                fdr_jours_strate = commune_data.get('FDR Jours Moyenne') if pd.notna(commune_data.get('FDR Jours Moyenne')) else 0
-                
+                fdr_jours_strate = commune_data_radar.get('FDR Jours Moyenne') if pd.notna(commune_data_radar.get('FDR Jours Moyenne')) else 0
+
                 # Normalisation STRATE
                 teb_strate_norm = min(100, (teb_strate / 15) * 100)
                 cd_strate_norm = max(0, min(100, (12 - cd_strate) / 12 * 100))
                 rigidite_strate_norm = max(0, min(100, 200 - rigidite_strate))
                 annuite_caf_strate_norm = max(0, min(100, (60 - annuite_caf_strate) / 60 * 100))
                 fdr_strate_norm = min(100, (fdr_jours_strate / 180) * 100) if fdr_jours_strate > 0 else 50
-                    
-                                # Radar cohérent avec VRAIES PLAGES
-                fig_radar_coherent = create_radar_coherent(commune_data, df_filtered)
+
+                # Radar cohérent avec VRAIES PLAGES
+                fig_radar_coherent = create_radar_coherent(commune_data_radar, df_filtered)
                 st.plotly_chart(fig_radar_coherent, use_container_width=True)
 
 
                 # Tableau de normalisation (pour expliquer la transformation)
                 st.subheader("📊 Détail de la normalisation")
-                tableau_norm = create_tableau_normalisation(commune_data)
+                tableau_norm = create_tableau_normalisation(commune_data_radar)
                 st.dataframe(tableau_norm, use_container_width=True, hide_index=True)
-                
+
                 # ── DONNÉES PUBLIQUES ──────────────────────────────────────
                 if enrichir_donnees_publiques:
                     display_donnees_publiques_commune(commune_data)
@@ -5160,29 +5447,29 @@ else:
 
                 # Analyse comparative textuelle
                 st.markdown("**🎯 Analyse comparative vs strate officielle :**")
-                
+
                 comparaisons = []
                 if teb_norm > teb_strate_norm + 10:
-                    comparaisons.append(f"✅ TEB supérieur à la strate ({commune_data['TEB (%)']:.1f}% vs {teb_strate:.1f}%)")
+                    comparaisons.append(f"✅ TEB supérieur à la strate ({commune_data_radar['TEB (%)']:.1f}% vs {teb_strate:.1f}%)")
                 elif teb_norm < teb_strate_norm - 10:
-                    comparaisons.append(f"⚠️ TEB inférieur à la strate ({commune_data['TEB (%)']:.1f}% vs {teb_strate:.1f}%)")
-                
+                    comparaisons.append(f"⚠️ TEB inférieur à la strate ({commune_data_radar['TEB (%)']:.1f}% vs {teb_strate:.1f}%)")
+
                 if cd_norm > cd_strate_norm + 10:
-                    comparaisons.append(f"✅ Endettement mieux maîtrisé que la strate ({commune_data['Années de Désendettement']:.1f} ans vs {cd_strate:.1f} ans)")
+                    comparaisons.append(f"✅ Endettement mieux maîtrisé que la strate ({commune_data_radar['Années de Désendettement']:.1f} ans vs {cd_strate:.1f} ans)")
                 elif cd_norm < cd_strate_norm - 10:
-                    comparaisons.append(f"⚠️ Endettement plus élevé que la strate ({commune_data['Années de Désendettement']:.1f} ans vs {cd_strate:.1f} ans)")
-                
-                if pd.notna(commune_data.get('Annuité / CAF (%)')):
+                    comparaisons.append(f"⚠️ Endettement plus élevé que la strate ({commune_data_radar['Années de Désendettement']:.1f} ans vs {cd_strate:.1f} ans)")
+
+                if pd.notna(commune_data_radar.get('Annuité / CAF (%)')):
                     if annuite_caf_norm > annuite_caf_strate_norm + 10:
-                        comparaisons.append(f"✅ Ratio Annuité/CAF plus favorable que la strate ({commune_data['Annuité / CAF (%)']:.1f}% vs {annuite_caf_strate:.1f}%)")
+                        comparaisons.append(f"✅ Ratio Annuité/CAF plus favorable que la strate ({commune_data_radar['Annuité / CAF (%)']:.1f}% vs {annuite_caf_strate:.1f}%)")
                     elif annuite_caf_norm < annuite_caf_strate_norm - 10:
-                        comparaisons.append(f"⚠️ Ratio Annuité/CAF moins favorable que la strate ({commune_data['Annuité / CAF (%)']:.1f}% vs {annuite_caf_strate:.1f}%)")
-                
-                if pd.notna(commune_data.get('FDR Jours Commune')) and fdr_jours_strate > 0:
+                        comparaisons.append(f"⚠️ Ratio Annuité/CAF moins favorable que la strate ({commune_data_radar['Annuité / CAF (%)']:.1f}% vs {annuite_caf_strate:.1f}%)")
+
+                if pd.notna(commune_data_radar.get('FDR Jours Commune')) and fdr_jours_strate > 0:
                     if fdr_norm > fdr_strate_norm + 10:
-                        comparaisons.append(f"✅ FDR supérieur à la strate ({commune_data['FDR Jours Commune']:.0f}j vs {fdr_jours_strate:.0f}j)")
+                        comparaisons.append(f"✅ FDR supérieur à la strate ({commune_data_radar['FDR Jours Commune']:.0f}j vs {fdr_jours_strate:.0f}j)")
                     elif fdr_norm < fdr_strate_norm - 10:
-                        comparaisons.append(f"⚠️ FDR inférieur à la strate ({commune_data['FDR Jours Commune']:.0f}j vs {fdr_jours_strate:.0f}j)")
+                        comparaisons.append(f"⚠️ FDR inférieur à la strate ({commune_data_radar['FDR Jours Commune']:.0f}j vs {fdr_jours_strate:.0f}j)")
                 
                 if comparaisons:
                     for comp in comparaisons:
@@ -5193,11 +5480,36 @@ else:
 # === ANALYSE PLURIANNUELLE ===
         st.markdown("---")
         st.subheader(f"📊 Évolution pluriannuelle : {commune_selectionnee}")
-        st.markdown("*Comparaison avec la moyenne de la strate officielle (2019-2024)*")
-        
+        _annees_label = "2019–2025 (2025 : saisie manuelle)" if _key_2025 in st.session_state.manual_2025_data else "2019–2024"
+        st.markdown(f"*Comparaison avec la moyenne de la strate officielle ({_annees_label})*")
+
         with st.spinner("Chargement des données historiques..."):
             df_historical = fetch_historical_commune_data(commune_selectionnee, dept_selection)
-        
+
+        # Injection données 2025 manuelles
+        if _key_2025 in st.session_state.manual_2025_data:
+            _d = st.session_state.manual_2025_data[_key_2025]
+            _row_2025 = build_2025_row_from_manual_input(
+                commune_name=_d["commune_name"],
+                dept=_d["dept"],
+                rrf=_d["rrf"],
+                drf=_d["drf"],
+                caf=_d["caf"],
+                det2cal=_d["det2cal"],
+                annu=_d["annu"],
+                fdr=_d["fdr"],
+                pop=_d["pop"],
+                mprod=_d.get("mprod"),
+                mcharge=_d.get("mcharge"),
+                mdet2cal=_d.get("mdet2cal"),
+                mannu=_d.get("mannu"),
+                mfdr=_d.get("mfdr"),
+            )
+            if not df_historical.empty:
+                df_historical = inject_2025_into_historical(df_historical, _row_2025)
+            else:
+                df_historical = pd.DataFrame([_row_2025])
+
         if not df_historical.empty and len(df_historical) > 1:
             df_historical_kpi = calculate_historical_kpis(df_historical)
             
@@ -5430,12 +5742,13 @@ else:
         with col_pdf_1:
             if st.button("📄 Générer Rapport PDF Complet", key="gen_pdf_button"):
                 with st.spinner("⏳ Génération du PDF en cours..."):
+                    _pdf_annee = f"{annee_selection} + 2025*" if _key_2025 in st.session_state.manual_2025_data else annee_selection
                     pdf_data = export_commune_analysis_to_pdf_enhanced(
-                        commune_data=commune_data,
+                        commune_data=commune_data_radar,
                         df_historical_kpi=df_historical_kpi,
                         commune_name=commune_selectionnee,
                         dept_selection=dept_selection,
-                        annee_selection=annee_selection,
+                        annee_selection=_pdf_annee,
                         df_filtered=df_filtered
                     )
                 
@@ -5544,7 +5857,7 @@ else:
         st.markdown("---")
         st.subheader("💾 Export des données")
 
-        # Export scores toutes années
+        # Export scores toutes années — département sélectionné
         st.markdown("**📊 Scores département — toutes années**")
         if st.button("Générer le tableau scores 2019-2024"):
             with st.spinner("Récupération des données (2019-2024)..."):
@@ -5559,6 +5872,24 @@ else:
                 st.success("✅ Fichier prêt à télécharger")
             else:
                 st.error("Aucune donnée disponible pour ce département.")
+
+        # Export scores toutes années — tous les départements
+        st.markdown("**🗺️ Scores tous départements — toutes années**")
+        st.caption("⚠️ Génération longue (~5-10 min) — toutes les communes de France métropolitaine + DOM")
+        if st.button("Générer Excel tous départements (2019-2024)", key="btn_all_deps"):
+            with st.spinner("Récupération des données pour tous les départements… cela peut prendre plusieurs minutes."):
+                excel_all = create_excel_scores_all_departments()
+            if excel_all:
+                st.download_button(
+                    label="⬇️ Télécharger Excel tous départements",
+                    data=excel_all,
+                    file_name="scores_tous_departements_2019_2024.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_all_deps"
+                )
+                st.success("✅ Fichier prêt à télécharger")
+            else:
+                st.error("Erreur lors de la génération du fichier.")
 
         st.markdown("---")
         col1, col2 = st.columns(2)
