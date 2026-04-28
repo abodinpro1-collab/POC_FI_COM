@@ -124,6 +124,9 @@ class RobustCommuneFetcher:
         
         normalized = name.strip().upper()
 
+        # Supprimer les suffixes administratifs "commune nouvelle" présents dans certaines années
+        normalized = re.sub(r'\s+(CNE\s+NOUVELLE|COMMUNE\s+NOUVELLE)$', '', normalized)
+
         # Remplacer les tirets avant D' ou L' par des espaces
         normalized = re.sub(r"-([DL]')", r" \1", normalized)
 
@@ -427,7 +430,8 @@ def fetch_historical_commune_data(commune_name, dep, years_range=[2019, 2020, 20
                 # Fallback : comparaison normalisée (insensible aux tirets/espaces/casse)
                 if not commune_found:
                     def _normalize(s):
-                        return re.sub(r'[\s\-\(\)\']+', '', str(s).upper())
+                        s = re.sub(r'\s+(CNE\s+NOUVELLE|COMMUNE\s+NOUVELLE)$', '', str(s).upper())
+                        return re.sub(r'[\s\-\(\)\']+', '', s)
                     target_norms = {_normalize(t) for t in candidate_names}
                     mask = df_year['Commune'].apply(lambda x: _normalize(x) in target_norms if pd.notna(x) else False)
                     commune_data = df_year[mask]
