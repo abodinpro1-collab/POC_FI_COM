@@ -3367,9 +3367,20 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
             fontSize=12,
             textColor=rl_colors.HexColor('#666666'),
             alignment=TA_CENTER,
-            spaceAfter=60
+            spaceAfter=10
         )))
-        
+
+        _pop_val = commune_data.get('Population', 0)
+        story.append(Paragraph(f"Population : {int(_pop_val):,} habitants".replace(",", " "), ParagraphStyle(
+            'Population',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=12,
+            textColor=rl_colors.HexColor('#666666'),
+            alignment=TA_CENTER,
+            spaceAfter=50
+        )))
+
         # Score box
         status_color = '#51CF66' if commune_data['Score'] >= 75 else '#FFB84D' if commune_data['Score'] >= 50 else '#FF6B6B'
         status_label = 'SAIN' if commune_data['Score'] >= 75 else 'A SURVEILLER' if commune_data['Score'] >= 50 else 'FRAGILE'
@@ -3457,9 +3468,16 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
             textColor=rl_colors.HexColor('#1a1a1a'),
             spaceAfter=15
         )))
-        
+
+        _pop_synth = commune_data.get('Population', 0)
+        story.append(Paragraph(
+            f"Commune de {commune_name} — Population : <b>{int(_pop_synth):,} habitants</b> — Departement {dept_selection}".replace(",", " "),
+            ParagraphStyle('PopSynth', parent=style_body, fontSize=10,
+                           textColor=rl_colors.HexColor('#444444'), spaceAfter=10)
+        ))
+
         story.append(Spacer(1, 0.3*cm))
-        
+
         # Insights / Forces
         insights = []
         
