@@ -98,12 +98,13 @@ DATASETS_MAPPING = {
     2021: "comptes-individuels-des-communes-fichier-global-2021",
     2022: "comptes-individuels-des-communes-fichier-global-2022",
     2023: "comptes-individuels-des-communes-fichier-global-2023-2024",
-    2024: "comptes-individuels-des-communes-fichier-global-2023-2024"
+    2024: "comptes-individuels-des-communes-fichier-global-2023-2024",
+    2025: "comptes-individuels-des-communes-fichier-global-2025"
 }
 
 def get_dataset_for_year(annee):
     """Retourne le dataset approprié pour une année donnée"""
-    return DATASETS_MAPPING.get(annee, "comptes-individuels-des-communes-fichier-global-2023-2024")
+    return DATASETS_MAPPING.get(annee, "comptes-individuels-des-communes-fichier-global-2025")
 
 def get_api_url_for_year(annee):
     """Retourne l'URL de l'API pour une année donnée"""
@@ -165,7 +166,7 @@ class RobustCommuneFetcher:
                 where_clause = f'inom LIKE "%{term}%"'
                 if departement:
                     where_clause += f' AND dep="{departement}"'
-                where_clause += ' AND an IN ("2019","2020","2021","2022","2023","2024")'
+                where_clause += ' AND an IN ("2019","2020","2021","2022","2023","2024","2025")'
                 
                 params = {"where": where_clause, "limit": 50, "select": "inom,dep"}
                 
@@ -265,7 +266,7 @@ departements_dispo = [f"{i:03d}" for i in range(1, 101)] + ["2A", "2B"] + ["101"
 dept_selection = st.sidebar.selectbox("Département", departements_dispo, key="dept_select_unique")
 
 # --- Année ---
-annees_dispo = [2024, 2023, 2022, 2021, 2020, 2019]
+annees_dispo = [2025, 2024, 2023, 2022, 2021, 2020, 2019]
 annee_selection = st.sidebar.selectbox("Année", annees_dispo, key="annee_select_unique")
 
 # --- Filtres additionnels ---
@@ -394,7 +395,7 @@ def fetch_communes(dep, an):
 
 # --- Fonction pour récupérer les données historiques d'une commune ---
 @st.cache_data(ttl=3600)
-def fetch_historical_commune_data(commune_name, dep, years_range=[2019, 2020, 2021, 2022, 2023, 2024]):
+def fetch_historical_commune_data(commune_name, dep, years_range=[2019, 2020, 2021, 2022, 2023, 2024, 2025]):
     """Récupère les données historiques d'une commune spécifique avec gestion des variantes"""
     fetcher = get_commune_fetcher()
     historical_data = []
@@ -1075,7 +1076,8 @@ def create_score_evolution_chart_seaborn(df_historical_kpi, commune_name):
     # ========================================
     # TITRES ET LABELS AMÉLIORÉS
     # ========================================
-    ax.set_title(f"📊 Évolution du Score de Santé Financière\n{commune_name} | Période 2019-2024", 
+    _periode_label = f"{int(df['Année'].min())}-{int(df['Année'].max())}"
+    ax.set_title(f"📊 Évolution du Score de Santé Financière\n{commune_name} | Période {_periode_label}",
                  fontsize=16, fontweight='bold', pad=25,
                  color='#2C3E50')
     
@@ -1179,8 +1181,9 @@ def create_score_evolution_chart(df_historical_kpi, commune_name):
     
         
     # Mise en page
+    _periode_label = f"{int(df['Année'].min())}-{int(df['Année'].max())}"
     fig.update_layout(
-        title=f"📈 Évolution du score de santé financière - {commune_name} (2019-2024)",
+        title=f"📈 Évolution du score de santé financière - {commune_name} ({_periode_label})",
         xaxis_title="Année",
         yaxis_title="Score de santé (/100)",
         hovermode='x unified',
@@ -1790,7 +1793,8 @@ def create_score_evolution_lines_seaborn(df_historical_kpi, commune_name):
     # ========================================
     # TITRES ET LABELS EXPERT
     # ========================================
-    ax.set_title(f"📈 Évolution détaillée du score par composante\n{commune_name} | Période 2019-2024", 
+    _periode_label = f"{int(df['Année'].min())}-{int(df['Année'].max())}"
+    ax.set_title(f"📈 Évolution détaillée du score par composante\n{commune_name} | Période {_periode_label}",
                  fontsize=18, fontweight='bold', pad=30,
                  color='#1A1A2E', loc='left')
     
@@ -4452,7 +4456,7 @@ def compute_kpis_for_scoring(df):
 def fetch_all_years_for_department(dep, years=None):
     """Récupère et score toutes les communes d'un département pour chaque année."""
     if years is None:
-        years = [2019, 2020, 2021, 2022, 2023, 2024]
+        years = [2019, 2020, 2021, 2022, 2023, 2024, 2025]
     frames = []
     for an in years:
         df = fetch_communes(dep, an)
@@ -4519,7 +4523,7 @@ def _build_pivot(df_long):
 def create_excel_scores_pivot(dep, years=None):
     """Génère un Excel pivot : communes en lignes, scores par année en colonnes."""
     if years is None:
-        years = [2019, 2020, 2021, 2022, 2023, 2024]
+        years = [2019, 2020, 2021, 2022, 2023, 2024, 2025]
     df_long = fetch_all_years_for_department(dep, years)
     if df_long.empty:
         return None
@@ -4585,7 +4589,7 @@ def create_excel_scores_pivot(dep, years=None):
 def create_excel_scores_all_departments(years=None):
     """Génère un Excel avec un onglet par département, scores par année + code_insee."""
     if years is None:
-        years = [2019, 2020, 2021, 2022, 2023, 2024]
+        years = [2019, 2020, 2021, 2022, 2023, 2024, 2025]
 
     deps = [f"{i:03d}" for i in range(1, 96) if i != 20] + ["02A", "02B"]
     deps += ["971", "972", "973", "974", "976"]
@@ -5881,14 +5885,14 @@ else:
 
         # Export scores toutes années — département sélectionné
         st.markdown("**📊 Scores département — toutes années**")
-        if st.button("Générer le tableau scores 2019-2024"):
-            with st.spinner("Récupération des données (2019-2024)..."):
+        if st.button("Générer le tableau scores 2019-2025"):
+            with st.spinner("Récupération des données (2019-2025)..."):
                 excel_pivot = create_excel_scores_pivot(dept_selection)
             if excel_pivot:
                 st.download_button(
-                    label="⬇️ Télécharger Excel scores 2019-2024",
+                    label="⬇️ Télécharger Excel scores 2019-2025",
                     data=excel_pivot,
-                    file_name=f"scores_{dept_selection}_2019_2024.xlsx",
+                    file_name=f"scores_{dept_selection}_2019_2025.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 st.success("✅ Fichier prêt à télécharger")
@@ -5898,14 +5902,14 @@ else:
         # Export scores toutes années — tous les départements
         st.markdown("**🗺️ Scores tous départements — toutes années**")
         st.caption("⚠️ Génération longue (~5-10 min) — toutes les communes de France métropolitaine + DOM")
-        if st.button("Générer Excel tous départements (2019-2024)", key="btn_all_deps"):
+        if st.button("Générer Excel tous départements (2019-2025)", key="btn_all_deps"):
             with st.spinner("Récupération des données pour tous les départements… cela peut prendre plusieurs minutes."):
                 excel_all = create_excel_scores_all_departments()
             if excel_all:
                 st.download_button(
                     label="⬇️ Télécharger Excel tous départements",
                     data=excel_all,
-                    file_name="scores_tous_departements_2019_2024.xlsx",
+                    file_name="scores_tous_departements_2019_2025.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="dl_all_deps"
                 )
