@@ -2,3 +2,4 @@
 /req.py
 /sample_data.csv
 /test.py.env
+__pycache__/
