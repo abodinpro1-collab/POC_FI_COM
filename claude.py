@@ -617,7 +617,7 @@ def calculate_historical_kpis(df_historical):
 
     # KPI Strate
     df_kpi_hist["TEB Strate (%)"] = df_kpi_hist["Épargne brute - Moy. strate (K€)"] / df_kpi_hist["RRF - Moy. strate (K€)"].replace(0, pd.NA) * 100
-    df_kpi_hist["CD Strate (années)"] = df_kpi_hist["Encours - Moy. strate (K€)"] / df_kpi_hist["Épargne brute - Moy. strate (K€)"].replace(0, pd.NA)
+    df_kpi_hist["Désendettement Strate (années)"] = df_kpi_hist["Encours - Moy. strate (K€)"] / df_kpi_hist["Épargne brute - Moy. strate (K€)"].replace(0, pd.NA)
     df_kpi_hist["Annuité/CAF Strate (%)"] = df_kpi_hist["Annuité - Moy. strate (K€)"] / df_kpi_hist["Épargne brute - Moy. strate (K€)"].replace(0, pd.NA) * 100
     
     # FDR Strate
@@ -690,7 +690,7 @@ def create_evolution_charts(df_historical_kpi, commune_name):
     ))
     fig_cd.add_trace(go.Scatter(
         x=df_historical_kpi['Année'], 
-        y=df_historical_kpi['CD Strate (années)'],
+        y=df_historical_kpi['Désendettement Strate (années)'],
         mode='lines+markers',
         name='Moyenne strate',
         line=dict(color='#ff7f0e', width=2, dash='dash'),
@@ -750,7 +750,7 @@ def create_evolution_charts(df_historical_kpi, commune_name):
         line=dict(color='#ff7f0e', width=2, dash='dash'),
         marker=dict(size=6)
     ))
-    fig_fdr.add_hline(y=180, line_dash="dot", line_color="green", annotation_text="Seuil bon (180j)")
+    fig_fdr.add_hline(y=60, line_dash="dot", line_color="green", annotation_text="Seuil bon (60j)")
     fig_fdr.add_hline(y=30, line_dash="dot", line_color="red", annotation_text="Seuil critique (30j)")
     fig_fdr.update_layout(
         title="👥 Évolution du Fonds de Roulement",
@@ -837,7 +837,7 @@ def create_evolution_charts_seaborn(df_historical_kpi, commune_name):
     sns.lineplot(
         data=df_historical_kpi, 
         x='Année', 
-        y='CD Strate (années)',
+        y='Désendettement Strate (années)',
         marker='o',
         linewidth=2,
         markersize=8,
@@ -937,8 +937,8 @@ def create_evolution_charts_seaborn(df_historical_kpi, commune_name):
         ax=ax
     )
     
-    ax.axhline(y=180, color='green', linestyle=':', linewidth=1.5, alpha=0.7)
-    ax.text(df_historical_kpi['Année'].min(), 185, 'Seuil bon (180j)',
+    ax.axhline(y=60, color='green', linestyle=':', linewidth=1.5, alpha=0.7)
+    ax.text(df_historical_kpi['Année'].min(), 65, 'Seuil bon (60j)',
             color='green', fontsize=9, va='bottom')
 
     ax.axhline(y=30, color='red', linestyle=':', linewidth=1.5, alpha=0.7)
@@ -1127,7 +1127,7 @@ def create_score_evolution_chart_seaborn(df_historical_kpi, commune_name):
     # NOTE DE BAS DE PAGE
     # ========================================
     fig.text(0.99, 0.01, 
-             'Note : Score basé sur TEB (20%), CD (30%), Annuité/CAF (30%), FDR (20%)',
+             'Note : Score basé sur TEB (20%), Désendettement (30%), Annuité/CAF (30%), FDR (20%)',
              ha='right', va='bottom', fontsize=8, style='italic', color='#7F8C8D')
     
     plt.tight_layout()
@@ -1284,7 +1284,7 @@ def create_score_evolution_stacked_bar(df_historical_kpi, commune_name):
         'Année': df['Année'],
         'TEB (20 pts)': teb_scores,
         'Annuité/CAF (30 pts)': annuite_scores,
-        'CD (30 pts)': cd_scores,
+        'Désendettement (30 pts)': cd_scores,
         'FDR (20 pts)': fdr_scores,
     })
     
@@ -1303,10 +1303,10 @@ def create_score_evolution_stacked_bar(df_historical_kpi, commune_name):
     
     fig.add_trace(go.Bar(
         x=df_stacked['Année'],
-        y=df_stacked['CD (30 pts)'],
-        name='CD (30 pts)',
+        y=df_stacked['Désendettement (30 pts)'],
+        name='Désendettement (30 pts)',
         marker_color=colors[2],
-        hovertemplate='<b>%{x}</b><br>CD : %{y:.1f} pts<extra></extra>'
+        hovertemplate='<b>%{x}</b><br>Désendettement : %{y:.1f} pts<extra></extra>'
     ))
     
     fig.add_trace(go.Bar(
@@ -1468,11 +1468,11 @@ def create_score_evolution_lines(df_historical_kpi, commune_name):
         x=df['Année'],
         y=cd_norm,
         mode='lines+markers',
-        name='CD Santé (0-100)',
+        name='Désendettement Santé (0-100)',
         line=dict(color='#2ca02c', width=2, dash='dash'),
         marker=dict(size=8),
         opacity=0.7,
-        hovertemplate='<b>%{x}</b><br>CD Santé : %{y:.0f}%<extra></extra>'
+        hovertemplate='<b>%{x}</b><br>Désendettement Santé : %{y:.0f}%<extra></extra>'
     ))
     
     # FDR normalisé (0-100)
@@ -1670,7 +1670,7 @@ def create_score_evolution_lines_seaborn(df_historical_kpi, commune_name):
         },
         {
             'data': cd_norm,
-            'label': 'CD Santé (30%)',
+            'label': 'Désendettement Santé (30%)',
             'color': '#27AE60',
             'linewidth': 2.2,
             'marker': '^',
@@ -1866,7 +1866,7 @@ def create_score_evolution_lines_seaborn(df_historical_kpi, commune_name):
                       edgecolor='#BDC3C7', linewidth=1, alpha=0.8))
     
     fig.text(0.98, 0.02, 
-             'Score = TEB (20%) + CD (30%) + Annuité/CAF (30%) + FDR (20%)',
+             'Score = TEB (20%) + Désendettement (30%) + Annuité/CAF (30%) + FDR (20%)',
              ha='right', va='bottom', fontsize=8, style='italic', color='#7F8C8D',
              bbox=dict(boxstyle='round,pad=0.7', facecolor='#F0F0F0', 
                       edgecolor='#BDC3C7', linewidth=1, alpha=0.8))
@@ -1900,11 +1900,11 @@ def create_evolution_details_seaborn(df_historical_kpi, commune_name):
     ax = axes[0, 1]
     ax.plot(df_historical_kpi['Annee'], df_historical_kpi['Annees de Desendettement'],
             marker='o', linewidth=3, markersize=8, label=commune_name, color='#1f77b4')
-    ax.plot(df_historical_kpi['Annee'], df_historical_kpi['CD Strate (annees)'],
+    ax.plot(df_historical_kpi['Annee'], df_historical_kpi['Desendettement Strate (annees)'],
             marker='s', linewidth=2, markersize=6, linestyle='--', label='Moyenne strate', color='#ff7f0e')
     ax.axhline(y=8, color='green', linestyle=':', alpha=0.7)
     ax.axhline(y=12, color='red', linestyle=':', alpha=0.7)
-    ax.set_title('CD - Capacite de Desendettement', fontweight='bold')
+    ax.set_title('Capacite de Desendettement', fontweight='bold')
     ax.set_ylabel('Annees', fontweight='bold')
     ax.legend(fontsize=9)
     ax.grid(True, alpha=0.3)
@@ -1928,7 +1928,7 @@ def create_evolution_details_seaborn(df_historical_kpi, commune_name):
             marker='o', linewidth=3, markersize=8, label=commune_name, color='#1f77b4')
     ax.plot(df_historical_kpi['Annee'], df_historical_kpi['FDR Jours Moyenne'],
             marker='s', linewidth=2, markersize=6, linestyle='--', label='Moyenne strate', color='#ff7f0e')
-    ax.axhline(y=180, color='green', linestyle=':', alpha=0.7)
+    ax.axhline(y=60, color='green', linestyle=':', alpha=0.7)
     ax.axhline(y=30, color='red', linestyle=':', alpha=0.7)
     ax.set_title('FDR - Fonds de Roulement', fontweight='bold')
     ax.set_ylabel('FDR (jours)', fontweight='bold')
@@ -2144,7 +2144,7 @@ def normaliser_indicateurs_pour_radar(row):
     - TEB : 0-30% (seuil vert à 15%)
     - Années de Désendettement : 0-15 ans (seuil vert < 8 ans)
     - Annuité/CAF : 0-80% (seuil vert < 50%)
-    - FDR : 0-180 jours (seuil vert >= 180j)
+    - FDR : 0-180 jours (seuil vert >= 60j)
     """
     
     # 1️⃣ TEB (%) - PLAGE 0-30%
@@ -2236,7 +2236,7 @@ def create_radar_coherent(commune_data, df_filtered=None):
         (15 / 30) * 100,              # TEB : 50
         ((15 - 8) / 15) * 100,        # CD : 46.67
         ((80 - 50) / 80) * 100,       # Annuité : 37.5
-        (120 / 180) * 100,            # FDR : 66.67 (seuil vert visuel à 120j)
+        (60 / 180) * 100,             # FDR : 33.33 (seuil vert à 60j)
         ((200 - 100) / 200) * 100     # Rigidité : 50
     ]
     
@@ -2362,7 +2362,7 @@ def create_radar_seaborn(commune_data, df_filtered=None):
         (15 / 30) * 100,              # TEB : 50
         ((15 - 8) / 15) * 100,        # CD : 46.67
         ((80 - 50) / 80) * 100,       # Annuite : 37.5
-        (120 / 180) * 100,            # FDR : 66.67 (seuil vert visuel à 120j)
+        (60 / 180) * 100,             # FDR : 33.33 (seuil vert à 60j)
         ((200 - 100) / 200) * 100     # Rigidite : 50
     ]
     
@@ -2570,7 +2570,7 @@ def create_score_evolution_stacked_bar_seaborn(df_historical_kpi, commune_name):
     # CD
     p2 = ax.bar(x, cd_scores, width, 
                 bottom=fdr_scores,
-                label='CD (30 pts)', 
+                label='Désendettement (30 pts)', 
                 color=colors['cd'],
                 edgecolor='white',
                 linewidth=1.5,
@@ -2952,7 +2952,7 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
         fig_cd_ind, ax = plt.subplots(figsize=(14, 7))
         ax.plot(df_historical_kpi['Année'], df_historical_kpi['Années de Désendettement'],
                 marker='o', linewidth=3, markersize=10, label=commune_name, color='#1f77b4')
-        ax.plot(df_historical_kpi['Année'], df_historical_kpi['CD Strate (années)'],
+        ax.plot(df_historical_kpi['Année'], df_historical_kpi['Désendettement Strate (années)'],
                 marker='s', linewidth=2, markersize=8, linestyle='--', label='Moy. strate', color='#ff7f0e')
         ax.axhline(y=8, color='green', linestyle=':', linewidth=2, alpha=0.7)
         ax.text(df_historical_kpi['Année'].min(), 8.5, 'Seuil bon (8 ans)', color='green', fontsize=10)
@@ -2996,8 +2996,8 @@ def generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filter
                 marker='o', linewidth=3, markersize=10, label=commune_name, color='#1f77b4')
         ax.plot(df_historical_kpi['Année'], df_historical_kpi['FDR Jours Moyenne'],
                 marker='s', linewidth=2, markersize=8, linestyle='--', label='Moy. strate', color='#ff7f0e')
-        ax.axhline(y=180, color='green', linestyle=':', linewidth=2, alpha=0.7)
-        ax.text(df_historical_kpi['Année'].min(), 185, 'Seuil bon (180j)', color='green', fontsize=10)
+        ax.axhline(y=60, color='green', linestyle=':', linewidth=2, alpha=0.7)
+        ax.text(df_historical_kpi['Année'].min(), 65, 'Seuil bon (60j)', color='green', fontsize=10)
         ax.axhline(y=30, color='red', linestyle=':', linewidth=2, alpha=0.7)
         ax.text(df_historical_kpi['Année'].min(), 35, 'Seuil critique (30j)', color='red', fontsize=10)
         ax.set_title('👥 Évolution du Fonds de Roulement', fontsize=14, fontweight='bold', pad=15)
@@ -3173,8 +3173,8 @@ def create_financial_summary_table_exact(df_historical_kpi):
     for _, row in df_sorted.iterrows():
         if pd.notna(row.get('FDR Jours Commune')):
             fdr_value = row['FDR Jours Commune']
-            # Colorer selon le seuil : >= 180 jours = vert, 30-180 jours = orange, < 30 jours = rouge
-            if fdr_value >= 180:
+            # Colorer selon le seuil : >= 60 jours = vert, 30-60 jours = orange, < 30 jours = rouge
+            if fdr_value >= 60:
                 color = '🟢'
             elif fdr_value >= 30:
                 color = '🟠'
@@ -3495,7 +3495,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
                 'icon': '✓',
                 'text': f'<b>Desendettement maitrise :</b> Capacite de {cd:.1f} ans, en dessous du seuil critique.'
             })
-        if commune_data.get('FDR Jours Commune', 0) >= 180:
+        if commune_data.get('FDR Jours Commune', 0) >= 60:
             insights.append({
                 'icon': '✓',
                 'text': f'<b>Tresorerie saine :</b> FDR de {commune_data.get("FDR Jours Commune", 0):.0f} jours assure une liquidite suffisante.'
@@ -3592,7 +3592,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
                     'BON' if pd.notna(data_actuelle.get('TEB Commune (%)')) and data_actuelle['TEB Commune (%)'] > 15 else 'A SURVEILLER'
                 ],
                 [
-                    'CD (ans)',
+                    'Désendettement (ans)',
                     # ⭐ VALIDATION : Vérifier si négatif ou impossible
                     (f"🔴 {data_actuelle['Années de Désendettement']:.1f}"
                     if pd.notna(data_actuelle.get('Années de Désendettement')) and data_actuelle['Années de Désendettement'] < 0
@@ -3601,7 +3601,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
                     else f"{data_actuelle['Années de Désendettement']:.1f}"
                     if pd.notna(data_actuelle.get('Années de Désendettement'))
                     else 'N/A'),
-                    f"{data_strate['CD Strate (années)']:.1f}" if pd.notna(data_strate.get('CD Strate (années)')) else 'N/A',
+                    f"{data_strate['Désendettement Strate (années)']:.1f}" if pd.notna(data_strate.get('Désendettement Strate (années)')) else 'N/A',
                     '<8',
                     # ⭐ STATUT avec validation
                     ('ELEVE'
@@ -3632,8 +3632,8 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
                     'FDR (j)',
                     f"{data_actuelle['FDR Jours Commune']:.0f}" if pd.notna(data_actuelle.get('FDR Jours Commune')) else 'N/A',
                     f"{data_strate['FDR Jours Moyenne']:.0f}" if pd.notna(data_strate.get('FDR Jours Moyenne')) else 'N/A',
-                    '>=180',
-                    'BON' if pd.notna(data_actuelle.get('FDR Jours Commune')) and data_actuelle['FDR Jours Commune'] >= 180 else 'A SURVEILLER'
+                    '>=60',
+                    'BON' if pd.notna(data_actuelle.get('FDR Jours Commune')) and data_actuelle['FDR Jours Commune'] >= 60 else 'A SURVEILLER'
                 ],
             ]
         else:
@@ -3932,7 +3932,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
                 fdr_brute,
                 '0-180j',
                 f"{norms['FDR_norm']:.1f}",
-                'Bon' if norms['FDR_norm'] > 80 else 'Acceptable' if norms['FDR_norm'] > 40 else 'Critique'
+                'Bon' if norms['FDR_norm'] >= (60 / 180) * 100 else 'Acceptable' if norms['FDR_norm'] >= (30 / 180) * 100 else 'Critique'
             ],
             [
                 'Rigidité (%)',
@@ -3965,7 +3965,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         story.append(Spacer(1, 0.4*cm))
         
         story.append(Paragraph(
-            "<b>Note :</b> Les valeurs inversees (CD, Annuite/CAF, Rigidite) signifient que plus la valeur brute est basse, "
+            "<b>Note :</b> Les valeurs inversees (Desendettement, Annuite/CAF, Rigidite) signifient que plus la valeur brute est basse, "
             "mieux c'est. La normalisation permet de les ramener a une echelle commune avec les autres indicateurs.",
             ParagraphStyle(
                 'Note',
@@ -4073,7 +4073,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         # CD
         cd_img = [x[1] for x in temp_images if x[0] == 'cd_ind']
         if cd_img and os.path.exists(cd_img[0]):
-            story.append(Paragraph("CD - Capacite de Désendettement", ParagraphStyle(
+            story.append(Paragraph("Capacité de Désendettement", ParagraphStyle(
                 'SubSection',
                 parent=styles['Heading3'],
                 fontName='Helvetica-Bold',
@@ -4161,7 +4161,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         story.append(Paragraph("TABLEAU RECAPITULATIF", style_section))
         story.append(Spacer(1, 0.5*cm))
         
-        tableau_data = [['ANNEE', 'SCORE', 'TEB (%)', 'CD (ans)', 'ANNUITE/CAF (%)', 'FDR (j)']]
+        tableau_data = [['ANNEE', 'SCORE', 'TEB (%)', 'Désendettement (ans)', 'ANNUITE/CAF (%)', 'FDR (j)']]
         
         for _, row in df_historical_kpi.iterrows():
             tableau_data.append([
@@ -4239,7 +4239,7 @@ def create_radar_plot_matplotlib(commune_data, df_filtered=None):
         (15 / 30) * 100,              # TEB : 50
         ((15 - 8) / 15) * 100,        # CD : 46.67
         ((80 - 50) / 80) * 100,       # Annuité : 37.5
-        (120 / 180) * 100,            # FDR : 66.67 (seuil vert visuel à 120j)
+        (60 / 180) * 100,             # FDR : 33.33 (seuil vert à 60j)
         ((200 - 100) / 200) * 100     # Rigidité : 50
     ]
     
@@ -4328,7 +4328,7 @@ def create_radar_plot_for_pdf(commune_data, df_filtered=None):
         (15 / 30) * 100,              # TEB : 50
         ((15 - 8) / 15) * 100,        # CD : 46.67
         ((80 - 50) / 80) * 100,       # Annuité : 37.5
-        (120 / 180) * 100,            # FDR : 66.67 (seuil vert visuel à 120j)
+        (60 / 180) * 100,             # FDR : 33.33 (seuil vert à 60j)
         ((200 - 100) / 200) * 100     # Rigidité : 50
     ]
     
@@ -5397,7 +5397,7 @@ else:
                     st.caption("📝 Radar calculé sur les données 2025 saisies manuellement.")
 
                 # Radar chart avec NOUVEAUX KPI
-                categories = ['TEB', 'CD inversée', 'Annuité/CAF inv.', 'FDR Jours', 'Rigidité inv.']
+                categories = ['TEB', 'Désendettement inv.', 'Annuité/CAF inv.', 'FDR Jours', 'Rigidité inv.']
 
                 # Normalisation des valeurs COMMUNE (0-100)
                 teb_norm = min(100, (commune_data_radar['TEB (%)'] / 15) * 100)
@@ -5567,7 +5567,7 @@ else:
                     - Chaque segment = Contribution d'une composante
                     - **TEB (bleu)** : Capacité à dégager de l'épargne
                     - **Annuité/CAF (orange)** : Part des dettes dans les recettes
-                    - **CD (vert)** : Temps pour rembourser la dette
+                    - **Désendettement (vert)** : Temps pour rembourser la dette
                     - **FDR (rouge)** : Liquidité et jours de fonctionnement
                     """)
             
@@ -5605,22 +5605,22 @@ else:
                     evolution_fdr = None
                 
                 with col1:
-                    delta_color = "normal" if evolution_score >= 0 else "inverse"
+                    delta_color = "normal"  # hausse = vert, baisse = rouge
                     st.metric("🎯 Évolution Score", f"{evolution_score:+.1f} pts", 
                              delta=f"{evolution_score:+.1f} pts", delta_color=delta_color)
                 
                 with col2:
-                    delta_color = "normal" if evolution_teb >= 0 else "inverse"
+                    delta_color = "normal"  # hausse = vert, baisse = rouge
                     st.metric("📈 Évolution TEB", f"{evolution_teb:+.1f}%", 
                              delta=f"{evolution_teb:+.1f}pp", delta_color=delta_color)
                 
                 with col3:
-                    delta_color = "inverse" if evolution_cd >= 0 else "normal"
-                    st.metric("⏳ Évolution CD", f"{evolution_cd:+.1f} ans", 
+                    delta_color = "inverse"  # hausse = rouge, baisse = vert
+                    st.metric("⏳ Évolution Désendettement", f"{evolution_cd:+.1f} ans", 
                              delta=f"{evolution_cd:+.1f} ans", delta_color=delta_color)
                 
                 with col4:
-                    delta_color = "inverse" if evolution_annuite >= 0 else "normal"
+                    delta_color = "inverse"  # hausse = rouge, baisse = vert
                     st.metric("💳 Évolution Annuité/CAF", f"{evolution_annuite:+.1f}%", 
                              delta=f"{evolution_annuite:+.1f}pp", delta_color=delta_color)
             
@@ -5654,7 +5654,7 @@ else:
             'Année', 'Population', 
             'Score Commune',
             'TEB Commune (%)', 'TEB Strate (%)',
-            'Années de Désendettement', 'CD Strate (années)', 
+            'Années de Désendettement', 'Désendettement Strate (années)', 
             'Annuité/CAF Commune (%)', 'Annuité/CAF Strate (%)',
             'FDR Jours Commune', 'FDR Jours Moyenne'
         ]
@@ -5709,7 +5709,7 @@ else:
             
             # FDR Jours
             elif 'FDR' in col_name:
-                if val >= 180:
+                if val >= 60:
                     return 'background-color: #90EE90'
                 elif val >= 30:
                     return 'background-color: #FFFFE0'
@@ -5751,9 +5751,9 @@ else:
         | Indicateur | 🟢 Bon | 🟠 À surveiller | 🔴 Critique |
         |---|---|---|---|
         | **TEB (%)** | ≥ 20% | 10-20% | < 10% |
-        | **CD (années)** | ≤ 8 ans | 8-12 ans | > 12 ans |
+        | **Désendettement (années)** | ≤ 8 ans | 8-12 ans | > 12 ans |
         | **Annuité/CAF (%)** | < 50% | 50-60% | ≥ 60% |
-        | **FDR (jours)** | >= 180j | 30-180j | < 30j |
+        | **FDR (jours)** | >= 60j | 30-60j | < 30j |
         | **Score (/100)** | ≥ 75 | 50-75 | < 50 |
         """)
 
@@ -5851,7 +5851,7 @@ else:
                 st.markdown("- 🟠 Orange : 8-15%")
                 st.markdown("- 🔴 Rouge : < 8%")
             with col2:
-                st.markdown("**CD** (30 pts)")
+                st.markdown("**Désendettement** (30 pts)")
                 st.markdown("- 🟢 Vert : < 8 ans")
                 st.markdown("- 🟠 Orange : 8-12 ans")
                 st.markdown("- 🔴 Rouge : > 12 ans")
@@ -5862,8 +5862,8 @@ else:
                 st.markdown("- 🔴 Rouge : > 60%")
             with col4:
                 st.markdown("**FDR Jours** (20 pts)")
-                st.markdown("- 🟢 Vert : >= 180j")
-                st.markdown("- 🟠 Orange : 30-180j")
+                st.markdown("- 🟢 Vert : >= 60j")
+                st.markdown("- 🟠 Orange : 30-60j")
                 st.markdown("- 🔴 Rouge : < 30j")
         
         with tab2:
@@ -6031,14 +6031,14 @@ else:
             
             # FDR
             if 'FDR Jours Commune' in df_filtered.columns:
-                fdr_vert = len(df_filtered[df_filtered['FDR Jours Commune'] >= 180])
-                fdr_orange = len(df_filtered[(df_filtered['FDR Jours Commune'] >= 30) & (df_filtered['FDR Jours Commune'] < 180)])
+                fdr_vert = len(df_filtered[df_filtered['FDR Jours Commune'] >= 60])
+                fdr_orange = len(df_filtered[(df_filtered['FDR Jours Commune'] >= 30) & (df_filtered['FDR Jours Commune'] < 60)])
                 fdr_rouge = len(df_filtered[df_filtered['FDR Jours Commune'] < 30])
             else:
                 fdr_vert = fdr_orange = fdr_rouge = 0
             
             repartition_df = pd.DataFrame({
-                'Critère': ['TEB', 'CD', 'Annuité/CAF', 'FDR'],
+                'Critère': ['TEB', 'Désendettement', 'Annuité/CAF', 'FDR'],
                 '🟢 Vert': [teb_vert, cd_vert, ann_vert, fdr_vert],
                 '🟠 Orange': [teb_orange, cd_orange, ann_orange, fdr_orange],
                 '🔴 Rouge': [teb_rouge, cd_rouge, ann_rouge, fdr_rouge]
@@ -6049,6 +6049,6 @@ else:
 st.markdown("---")
 st.markdown("**📌 Nouveau système de scoring V3**")
 st.markdown("*Données : API des comptes individuels des communes - data.economie.gouv.fr*")
-st.markdown("*Scoring basé sur : TEB (20%), CD (30%), Annuité/CAF (30%), FDR (20%)*")
+st.markdown("*Scoring basé sur : TEB (20%), Désendettement (30%), Annuité/CAF (30%), FDR (20%)*")
 st.markdown("SFP COLLECTIVITÉS")
 st.markdown("**© 2025 SFP COLLECTIVITÉS. Reproduction intégrale ou partielle interdite sauf autorisation écrite. Fichier protégé — toute modification est strictement interdite**")
