@@ -56,6 +56,17 @@ st.set_page_config(
 # Mot de passe stocké dans .env (fichier ignoré par git)
 APP_PASSWORD = os.getenv("APP_PASSWORD")
 
+def score_fdr_points(fdr_jours):
+    """Points FDR (0-20) : < 30j = 0 | 30-60j = 0→15 (Orange) | 60-120j = 15→20 (Vert) | >= 120j = 20"""
+    if fdr_jours >= 120:
+        return 20
+    elif fdr_jours >= 60:
+        return 15 + ((fdr_jours - 60) / 60) * 5
+    elif fdr_jours >= 30:
+        return ((fdr_jours - 30) / 30) * 15
+    return 0
+
+
 def check_password():
     """Vérifie si l'utilisateur est authentifié"""
     if "authenticated" not in st.session_state:
@@ -1268,14 +1279,7 @@ def create_score_evolution_stacked_bar(df_historical_kpi, commune_name):
     for _, row in df.iterrows():
         if pd.notna(row.get('FDR Jours Commune')):
             fdr_jours = row.get('FDR Jours Commune')
-            if fdr_jours >= 180:
-                fdr_scores.append(20)
-            elif fdr_jours >= 90:
-                fdr_scores.append(15 + ((fdr_jours - 90) / 90) * 5)
-            elif fdr_jours >= 30:
-                fdr_scores.append(((fdr_jours - 30) / 60) * 15)
-            else:
-                fdr_scores.append(0)
+            fdr_scores.append(score_fdr_points(fdr_jours))
         else:
             fdr_scores.append(10)
     
@@ -1413,16 +1417,7 @@ def create_score_evolution_lines(df_historical_kpi, commune_name):
     for _, row in df.iterrows():
         if pd.notna(row.get('FDR Jours Commune')):
             fdr_jours = row.get('FDR Jours Commune')
-            if fdr_jours >= 180:
-                fdr_norm.append(100)
-            elif fdr_jours >= 90:
-                score_pts = 15 + ((fdr_jours - 90) / 90) * 5
-                fdr_norm.append((score_pts / 20) * 100)
-            elif fdr_jours >= 30:
-                score_pts = ((fdr_jours - 30) / 60) * 15
-                fdr_norm.append((score_pts / 20) * 100)
-            else:
-                fdr_norm.append(0)
+            fdr_norm.append((score_fdr_points(fdr_jours) / 20) * 100)
         else:
             fdr_norm.append(50)
     
@@ -1583,16 +1578,7 @@ def create_score_evolution_lines_seaborn(df_historical_kpi, commune_name):
         # FDR
         if pd.notna(row.get('FDR Jours Commune')):
             fdr_jours = row.get('FDR Jours Commune')
-            if fdr_jours >= 180:
-                fdr_norm.append(100)
-            elif fdr_jours >= 90:
-                score_pts = 15 + ((fdr_jours - 90) / 90) * 5
-                fdr_norm.append((score_pts / 20) * 100)
-            elif fdr_jours >= 30:
-                score_pts = ((fdr_jours - 30) / 60) * 15
-                fdr_norm.append((score_pts / 20) * 100)
-            else:
-                fdr_norm.append(0)
+            fdr_norm.append((score_fdr_points(fdr_jours) / 20) * 100)
         else:
             fdr_norm.append(50)
     
@@ -2021,9 +2007,9 @@ def score_sante_financiere_v3(row, df_ref):
     - Ratio Annuité/CAF : 30 points (<30% = vert, 30-50% = progressif, >50% = rouge)
     - FDR en jours : 20 points :
         * < 30 j : 0 pts (Rouge)
-        * 30-90 j : interpolation 0→15 pts (Orange)
-        * 90-180 j : interpolation 15→20 pts (Vert)
-        * >= 180 j : 20 pts (Vert)
+        * 30-60 j : interpolation 0→15 pts (Orange)
+        * 60-120 j : interpolation 15→20 pts (Vert)
+        * >= 120 j : 20 pts (Vert)
     """
     score = 0
     
@@ -2085,18 +2071,11 @@ def score_sante_financiere_v3(row, df_ref):
         score += 30
     
     # 4. FONDS DE ROULEMENT EN JOURS - 20 points
-    # < 30j = 0 pts | 30-90j = interpolation 0→15 | >= 90j = 15 pts | 90-180j = interpolation 15→20 | >= 180j = 20 pts
+    # < 30j = 0 pts | 30-60j = interpolation 0→15 | 60-120j = interpolation 15→20 | >= 120j = 20 pts
     if pd.notna(row['FDR Jours Commune']):
         fdr = row['FDR Jours Commune']
 
-        if fdr >= 180:
-            score += 20
-        elif fdr >= 90:
-            score += 15 + ((fdr - 90) / 90) * 5
-        elif fdr >= 30:
-            score += ((fdr - 30) / 60) * 15
-        else:
-            score += 0
+        score += score_fdr_points(fdr)
     else:
         score += 10
     
@@ -2508,14 +2487,7 @@ def create_score_evolution_stacked_bar_seaborn(df_historical_kpi, commune_name):
         # FDR (max 20 pts)
         if pd.notna(row.get('FDR Jours Commune')):
             fdr_jours = row.get('FDR Jours Commune')
-            if fdr_jours >= 180:
-                fdr_scores.append(20)
-            elif fdr_jours >= 90:
-                fdr_scores.append(15 + ((fdr_jours - 90) / 90) * 5)
-            elif fdr_jours >= 30:
-                fdr_scores.append(((fdr_jours - 30) / 60) * 15)
-            else:
-                fdr_scores.append(0)
+            fdr_scores.append(score_fdr_points(fdr_jours))
         else:
             fdr_scores.append(10)
     
@@ -4139,7 +4111,7 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
             )))
             story.append(Paragraph(
                 "Nombre de jours de fonctionnement garantis par la tresorerie. "
-                "Seuil vert : >=180 j | Seuil critique : <30 j",
+                "Seuil vert : >=60 j | Seuil critique : <30 j",
                 ParagraphStyle(
                     'Explanation',
                     parent=styles['Normal'],
