@@ -3269,25 +3269,42 @@ def create_radar_comparaison(rows):
     return fig
 
 
+def _prepare_score_history(df_h):
+    """Années converties en entiers (l'API peut les renvoyer en texte), une ligne par année"""
+    df = df_h[['Année', 'Score Commune']].copy()
+    df['Année'] = pd.to_numeric(df['Année'].astype(str).str[:4], errors='coerce')
+    df['Score Commune'] = pd.to_numeric(df['Score Commune'], errors='coerce')
+    df = df.dropna().drop_duplicates('Année', keep='last').sort_values('Année')
+    df['Année'] = df['Année'].astype(int)
+    return df
+
+
 def create_score_comparaison_chart(hist_by_commune):
     """Évolution du score dans le temps pour chaque commune (dict nom -> df historique KPI)"""
     fig = go.Figure()
+    # Zones de niveau d'alerte
+    fig.add_hrect(y0=75, y1=100, fillcolor="#10b981", opacity=0.08, line_width=0)
+    fig.add_hrect(y0=50, y1=75, fillcolor="#f59e0b", opacity=0.08, line_width=0)
+    fig.add_hrect(y0=0, y1=50, fillcolor="#ef4444", opacity=0.08, line_width=0)
+
     for i, (nom, df_h) in enumerate(hist_by_commune.items()):
-        df_h = df_h.sort_values('Année')
+        df_h = _prepare_score_history(df_h)
         fig.add_trace(go.Scatter(
             x=df_h['Année'], y=df_h['Score Commune'],
-            mode='lines+markers', name=nom,
-            line=dict(color=COULEURS_COMPARAISON[i % len(COULEURS_COMPARAISON)], width=4 if i == 0 else 2),
-            marker=dict(size=8),
-            hovertemplate=f'<b>{nom}</b><br>%{{x}} : %{{y:.1f}}/100<extra></extra>'
+            mode='lines+markers+text', name=nom,
+            text=[f"{v:.0f}" for v in df_h['Score Commune']],
+            textposition='top center', textfont=dict(size=10),
+            line=dict(color=COULEURS_COMPARAISON[i % len(COULEURS_COMPARAISON)], width=4 if i == 0 else 2.5),
+            marker=dict(size=9),
+            hovertemplate=f'<b>{nom}</b> : %{{y:.1f}}/100<extra></extra>'
         ))
-    fig.add_hline(y=75, line_dash="dot", line_color="green", annotation_text="Seuil vert (75)")
-    fig.add_hline(y=50, line_dash="dot", line_color="orange", annotation_text="Seuil orange (50)")
     fig.update_layout(
         title="📈 Évolution comparée du score de santé financière",
         xaxis_title="Année", yaxis_title="Score (/100)",
-        yaxis=dict(range=[0, 100]), xaxis=dict(dtick=1),
-        hovermode='x unified', height=450
+        yaxis=dict(range=[0, 105]), xaxis=dict(dtick=1, tickformat='d'),
+        hovermode='x unified', height=480,
+        legend=dict(orientation="h", yanchor="top", y=-0.18, xanchor="center", x=0.5),
+        margin=dict(t=60, b=90)
     )
     return fig
 
@@ -3322,21 +3339,32 @@ def create_radar_comparaison_matplotlib(rows):
 def create_score_comparaison_matplotlib(hist_by_commune):
     """Version matplotlib de l'évolution comparée du score (pour le PDF)"""
     fig, ax = plt.subplots(figsize=(10, 5))
+    # Zones de niveau d'alerte
+    ax.axhspan(75, 100, color='#10b981', alpha=0.08)
+    ax.axhspan(50, 75, color='#f59e0b', alpha=0.08)
+    ax.axhspan(0, 50, color='#ef4444', alpha=0.08)
+
+    annees = set()
     for i, (nom, df_h) in enumerate(hist_by_commune.items()):
-        df_h = df_h.sort_values('Année')
-        ax.plot(df_h['Année'], df_h['Score Commune'], marker='o',
-                linewidth=3.5 if i == 0 else 2,
-                color=COULEURS_COMPARAISON[i % len(COULEURS_COMPARAISON)], label=nom)
-    ax.axhline(y=75, color='green', linestyle=':', linewidth=1.5, alpha=0.7)
-    ax.axhline(y=50, color='orange', linestyle=':', linewidth=1.5, alpha=0.7)
-    ax.set_ylim(0, 100)
+        df_h = _prepare_score_history(df_h)
+        annees.update(df_h['Année'])
+        couleur = COULEURS_COMPARAISON[i % len(COULEURS_COMPARAISON)]
+        ax.plot(df_h['Année'], df_h['Score Commune'], marker='o', markersize=7,
+                linewidth=3.5 if i == 0 else 2.2, color=couleur, label=nom, zorder=3)
+        for x, y in zip(df_h['Année'], df_h['Score Commune']):
+            ax.annotate(f"{y:.0f}", (x, y), textcoords='offset points', xytext=(0, 7),
+                        ha='center', fontsize=8, color=couleur, fontweight='bold')
+
+    ax.set_ylim(0, 105)
+    if annees:
+        annees = sorted(annees)
+        ax.set_xticks(annees)
+        ax.set_xlim(annees[0] - 0.4, annees[-1] + 0.4)
     ax.set_xlabel('Année', fontweight='bold')
     ax.set_ylabel('Score (/100)', fontweight='bold')
-    annees = sorted({int(a) for df_h in hist_by_commune.values() for a in df_h['Année'].dropna()})
-    if annees:
-        ax.set_xticks(annees)
-    ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=9)
+    ax.grid(True, axis='y', alpha=0.3)
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.14), ncol=len(hist_by_commune), fontsize=9, frameon=False)
     plt.tight_layout()
     return fig
 
