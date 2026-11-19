@@ -3194,13 +3194,251 @@ def add_header_footer(canvas, doc):
     
     canvas.restoreState()
 
-def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, commune_name, dept_selection, annee_selection, df_filtered):
+# ============================================================
+# COMPARAISON ENTRE COMMUNES
+# ============================================================
+
+COULEURS_COMPARAISON = ['#2563eb', '#dc2626', '#16a34a', '#9333ea']
+
+RADAR_COMPARAISON_AXES = [
+    ('TEB_norm', 'TEB (%) 0-30%'),
+    ('CD_norm', 'Années Désendettement 0-15 ans'),
+    ('Annuité_CAF_norm', 'Annuité/CAF (%) 0-80%'),
+    ('FDR_norm', 'FDR (jours) 0-180j'),
+    ('Rigidité_norm', 'Rigidité (%) inversion 0-200%'),
+]
+
+
+def _arrondi(v, n=1):
+    """Arrondit une valeur ou retourne None si elle est manquante"""
+    try:
+        return round(float(v), n) if pd.notna(v) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def build_comparison_table(rows):
+    """
+    Tableau comparatif des indicateurs de l'année en cours.
+    rows : liste de Series (commune analysée en premier, puis communes de comparaison)
+    """
+    data = []
+    for r in rows:
+        pop = r.get('Population')
+        data.append({
+            'Commune': r['Commune'],
+            'Population': int(pop) if pd.notna(pop) else None,
+            'Score': _arrondi(r.get('Score')),
+            "Niveau d'alerte": r.get("Niveau d'alerte"),
+            'TEB (%)': _arrondi(r.get('TEB (%)')),
+            'Désendettement (ans)': _arrondi(r.get('Années de Désendettement')),
+            'Annuité/CAF (%)': _arrondi(r.get('Annuité / CAF (%)')),
+            'FDR (jours)': _arrondi(r.get('FDR Jours Commune'), 0),
+            'Rigidité (%)': _arrondi(r.get('Rigidité (%)')),
+        })
+    return pd.DataFrame(data)
+
+
+def create_radar_comparaison(rows):
+    """Radar Plotly : une courbe par commune (même normalisation que le radar principal)"""
+    categories = [label for _, label in RADAR_COMPARAISON_AXES]
+    fig = go.Figure()
+
+    for i, r in enumerate(rows):
+        norms = normaliser_indicateurs_pour_radar(r)
+        values = list(np.clip([norms[k] for k, _ in RADAR_COMPARAISON_AXES], 0, 100))
+        couleur = COULEURS_COMPARAISON[i % len(COULEURS_COMPARAISON)]
+        fig.add_trace(go.Scatterpolar(
+            r=values + values[:1],
+            theta=categories + categories[:1],
+            fill='toself' if i == 0 else 'none',
+            name=f"{r['Commune']} ({r['Score']:.0f}/100)",
+            line=dict(color=couleur, width=3 if i == 0 else 2),
+            marker=dict(size=6),
+            opacity=0.9
+        ))
+
+    fig.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+        showlegend=True,
+        title=dict(text="<b>🎯 Profil financier comparé</b>", font=dict(size=14)),
+        height=550,
+        legend=dict(orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5),
+        margin=dict(l=60, r=60, t=80, b=80)
+    )
+    return fig
+
+
+def create_score_comparaison_chart(hist_by_commune):
+    """Évolution du score dans le temps pour chaque commune (dict nom -> df historique KPI)"""
+    fig = go.Figure()
+    for i, (nom, df_h) in enumerate(hist_by_commune.items()):
+        df_h = df_h.sort_values('Année')
+        fig.add_trace(go.Scatter(
+            x=df_h['Année'], y=df_h['Score Commune'],
+            mode='lines+markers', name=nom,
+            line=dict(color=COULEURS_COMPARAISON[i % len(COULEURS_COMPARAISON)], width=4 if i == 0 else 2),
+            marker=dict(size=8),
+            hovertemplate=f'<b>{nom}</b><br>%{{x}} : %{{y:.1f}}/100<extra></extra>'
+        ))
+    fig.add_hline(y=75, line_dash="dot", line_color="green", annotation_text="Seuil vert (75)")
+    fig.add_hline(y=50, line_dash="dot", line_color="orange", annotation_text="Seuil orange (50)")
+    fig.update_layout(
+        title="📈 Évolution comparée du score de santé financière",
+        xaxis_title="Année", yaxis_title="Score (/100)",
+        yaxis=dict(range=[0, 100]), xaxis=dict(dtick=1),
+        hovermode='x unified', height=450
+    )
+    return fig
+
+
+def create_radar_comparaison_matplotlib(rows):
+    """Version matplotlib du radar comparatif (pour le PDF)"""
+    labels = [label.replace(' 0-', '\n0-').replace(' inversion', '\ninv.') for _, label in RADAR_COMPARAISON_AXES]
+    angles = [n / float(len(labels)) * 2 * pi for n in range(len(labels))]
+    angles += angles[:1]
+
+    fig, ax = plt.subplots(figsize=(8, 7), subplot_kw=dict(polar=True))
+    for i, r in enumerate(rows):
+        norms = normaliser_indicateurs_pour_radar(r)
+        values = list(np.clip([norms[k] for k, _ in RADAR_COMPARAISON_AXES], 0, 100))
+        values += values[:1]
+        couleur = COULEURS_COMPARAISON[i % len(COULEURS_COMPARAISON)]
+        ax.plot(angles, values, 'o-', linewidth=3 if i == 0 else 2, color=couleur,
+                label=f"{r['Commune']} ({r['Score']:.0f}/100)")
+        if i == 0:
+            ax.fill(angles, values, alpha=0.15, color=couleur)
+
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(labels, fontsize=9)
+    ax.set_ylim(0, 100)
+    ax.set_yticks([20, 40, 60, 80, 100])
+    ax.tick_params(axis='y', labelsize=8)
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.08), ncol=2, fontsize=9, frameon=False)
+    plt.tight_layout()
+    return fig
+
+
+def create_score_comparaison_matplotlib(hist_by_commune):
+    """Version matplotlib de l'évolution comparée du score (pour le PDF)"""
+    fig, ax = plt.subplots(figsize=(10, 5))
+    for i, (nom, df_h) in enumerate(hist_by_commune.items()):
+        df_h = df_h.sort_values('Année')
+        ax.plot(df_h['Année'], df_h['Score Commune'], marker='o',
+                linewidth=3.5 if i == 0 else 2,
+                color=COULEURS_COMPARAISON[i % len(COULEURS_COMPARAISON)], label=nom)
+    ax.axhline(y=75, color='green', linestyle=':', linewidth=1.5, alpha=0.7)
+    ax.axhline(y=50, color='orange', linestyle=':', linewidth=1.5, alpha=0.7)
+    ax.set_ylim(0, 100)
+    ax.set_xlabel('Année', fontweight='bold')
+    ax.set_ylabel('Score (/100)', fontweight='bold')
+    annees = sorted({int(a) for df_h in hist_by_commune.values() for a in df_h['Année'].dropna()})
+    if annees:
+        ax.set_xticks(annees)
+    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize=9)
+    plt.tight_layout()
+    return fig
+
+
+def build_pdf_comparison_section(comparaison, styles, style_section, style_body):
+    """
+    Construit la section « Comparaison avec d'autres communes » du PDF.
+    Retourne (flowables, fichiers_temporaires).
+    """
+    flowables = []
+    temp_files = []
+    rows = comparaison['rows']
+
+    flowables.append(Paragraph("COMPARAISON AVEC D'AUTRES COMMUNES", style_section))
+    noms = ", ".join(r['Commune'] for r in rows[1:])
+    flowables.append(Paragraph(
+        f"La commune de <b>{rows[0]['Commune']}</b> est comparee ci-dessous avec : {noms}. "
+        "Les indicateurs sont ceux de l'annee analysee, calcules avec la meme methode de scoring.",
+        style_body
+    ))
+    flowables.append(Spacer(1, 0.3*cm))
+
+    # --- Tableau comparatif ---
+    style_cell = ParagraphStyle('CompCell', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=10)
+
+    def _fmt(v, suffixe=''):
+        return 'N/A' if v is None or pd.isna(v) else f"{v:g}{suffixe}"
+
+    df_comp = build_comparison_table(rows)
+    tableau = [['Commune', 'Pop.', 'Score', 'TEB', 'Désend.', 'Annuité\n/CAF', 'FDR', 'Rigidité']]
+    for _, r in df_comp.iterrows():
+        tableau.append([
+            Paragraph(f"<b>{r['Commune']}</b>", style_cell),
+            f"{int(r['Population']):,}".replace(',', ' ') if pd.notna(r['Population']) else 'N/A',
+            _fmt(r['Score']),
+            _fmt(r['TEB (%)'], '%'),
+            _fmt(r['Désendettement (ans)'], ' ans'),
+            _fmt(r['Annuité/CAF (%)'], '%'),
+            _fmt(r['FDR (jours)'], ' j'),
+            _fmt(r['Rigidité (%)'], '%'),
+        ])
+
+    table_style = [
+        ('BACKGROUND', (0, 0), (-1, 0), rl_colors.HexColor('#1a1a1a')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), rl_colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+        ('TOPPADDING', (0, 0), (-1, -1), 7),
+        ('GRID', (0, 0), (-1, -1), 0.5, rl_colors.HexColor('#e8e8e8')),
+        ('LINEBELOW', (0, 0), (-1, 0), 2, rl_colors.HexColor('#1a1a1a')),
+        ('BACKGROUND', (0, 1), (-1, 1), rl_colors.HexColor('#eff6ff')),
+    ]
+    # Couleur du score selon le niveau d'alerte
+    for i, score in enumerate(df_comp['Score'], start=1):
+        if score is not None and pd.notna(score):
+            couleur = '#d1fae5' if score >= 75 else '#fed7aa' if score >= 50 else '#fecaca'
+            table_style.append(('BACKGROUND', (2, i), (2, i), rl_colors.HexColor(couleur)))
+
+    table = Table(tableau, colWidths=[4.2*cm, 1.7*cm, 1.4*cm, 1.6*cm, 1.9*cm, 1.7*cm, 1.5*cm, 1.6*cm])
+    table.setStyle(TableStyle(table_style))
+    flowables.append(table)
+    flowables.append(Spacer(1, 0.5*cm))
+
+    # --- Radar comparatif ---
+    fig_radar = create_radar_comparaison_matplotlib(rows)
+    tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+    fig_radar.savefig(tmp.name, dpi=200, bbox_inches='tight')
+    plt.close(fig_radar)
+    temp_files.append(('comparaison_radar', tmp.name))
+    flowables.append(KeepTogether([
+        Paragraph("<b>Profil financier compare</b> (plus vers l'exterieur = mieux)", style_body),
+        Image(tmp.name, width=9*cm, height=7.9*cm),
+    ]))
+
+    # --- Évolution du score ---
+    hist = comparaison.get('hist') or {}
+    if hist:
+        fig_score = create_score_comparaison_matplotlib(hist)
+        tmp2 = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        fig_score.savefig(tmp2.name, dpi=200, bbox_inches='tight')
+        plt.close(fig_score)
+        temp_files.append(('comparaison_score', tmp2.name))
+        flowables.append(Spacer(1, 0.2*cm))
+        flowables.append(KeepTogether([
+            Paragraph("<b>Evolution comparee du score de sante financiere</b>", style_body),
+            Image(tmp2.name, width=14*cm, height=6.5*cm),
+        ]))
+
+    return flowables, temp_files
+
+
+def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, commune_name, dept_selection, annee_selection, df_filtered, comparaison=None):
     """
     Exporte un PDF professionnel avec :
     1. Page de garde
     2. ANALYSE DÉTAILLÉE (année actuelle)
     4. Évolution pluriannuelle
     5. Conclusions
+    6. Comparaison avec d'autres communes (si `comparaison` est fourni)
     """
     try:
         temp_images = generate_pdf_graphs(df_historical_kpi, commune_name, commune_data, df_filtered)
@@ -4162,6 +4400,15 @@ def export_commune_analysis_to_pdf_enhanced(commune_data, df_historical_kpi, com
         ]))
         
         story.append(evolution_table)
+
+        # ========================================
+        # PAGE 7 : COMPARAISON AVEC D'AUTRES COMMUNES (optionnelle)
+        # ========================================
+        if comparaison and len(comparaison.get('rows', [])) > 1:
+            story.append(PageBreak())
+            comp_flowables, comp_images = build_pdf_comparison_section(comparaison, styles, style_section, style_body)
+            story.extend(comp_flowables)
+            temp_images.extend(comp_images)
         
         # === BUILD PDF ===
         doc.build(story)
@@ -5201,6 +5448,15 @@ else:
         st.subheader("🔍 Analyse détaillée d'une commune")
         
         commune_selectionnee = st.selectbox("Choisir une commune", df_filtered['Commune'].sort_values())
+
+        # Communes de comparaison (même département, sans filtre de niveau d'alerte)
+        communes_comparaison = st.multiselect(
+            "⚖️ Communes de comparaison (3 maximum)",
+            [c for c in df_kpi['Commune'].sort_values().unique() if c != commune_selectionnee],
+            max_selections=3,
+            key="communes_comparaison",
+            help="Ces communes apparaîtront dans la section « Comparaison » ci-dessous et dans le rapport PDF."
+        )
         
         if commune_selectionnee:
             commune_data = df_filtered[df_filtered['Commune'] == commune_selectionnee].iloc[0]
@@ -5730,6 +5986,43 @@ else:
         """)
 
         
+        # === COMPARAISON AVEC D'AUTRES COMMUNES ===
+        comparaison_pdf = None
+        if commune_selectionnee and communes_comparaison:
+            st.markdown("---")
+            st.subheader(f"⚖️ Comparaison avec d'autres communes")
+            st.markdown(f"*{commune_selectionnee} comparée à : {', '.join(communes_comparaison)} ({annee_selection})*")
+            if _has_2025:
+                st.caption(f"📝 {commune_selectionnee} : indicateurs calculés sur les données 2025 saisies manuellement.")
+
+            rows_comparaison = [commune_data_radar] + [
+                df_kpi[df_kpi['Commune'] == c].iloc[0] for c in communes_comparaison
+            ]
+            st.dataframe(build_comparison_table(rows_comparaison), use_container_width=True, hide_index=True)
+
+            # Historique des communes de comparaison
+            hist_comparaison = {}
+            _hist_principal = globals().get('df_historical_kpi')
+            if _hist_principal is not None and not _hist_principal.empty:
+                hist_comparaison[commune_selectionnee] = _hist_principal
+            with st.spinner("Chargement de l'historique des communes de comparaison..."):
+                with st.expander("🔧 Détails du chargement", expanded=False):
+                    for c in communes_comparaison:
+                        _df_h = fetch_historical_commune_data(c, dept_selection)
+                        if not _df_h.empty:
+                            hist_comparaison[c] = calculate_historical_kpis(_df_h)
+
+            col_comp_1, col_comp_2 = st.columns(2)
+            with col_comp_1:
+                st.plotly_chart(create_radar_comparaison(rows_comparaison), use_container_width=True)
+            with col_comp_2:
+                if hist_comparaison:
+                    st.plotly_chart(create_score_comparaison_chart(hist_comparaison), use_container_width=True)
+                else:
+                    st.info("Historique indisponible pour les communes sélectionnées.")
+
+            comparaison_pdf = {'rows': rows_comparaison, 'hist': hist_comparaison}
+
         # === EXPORT PDF ===
         st.markdown("---")
         st.subheader("💾 Export Rapport PDF")
@@ -5747,7 +6040,8 @@ else:
                         commune_name=commune_selectionnee,
                         dept_selection=dept_selection,
                         annee_selection=_pdf_annee,
-                        df_filtered=df_filtered
+                        df_filtered=df_filtered,
+                        comparaison=comparaison_pdf
                     )
                 
                 if pdf_data:
@@ -5772,6 +6066,7 @@ else:
             • Graphiques principaux
             • Tableau récapitulatif
             • Conclusions
+            • Comparaison (si communes choisies)
             """)
         
         # ============================================================
